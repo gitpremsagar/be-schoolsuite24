@@ -1,0 +1,479 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+  EMPLOYEE
+  STUDENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+}
+
+enum StaffType {
+  ADMIN
+  TEACHER
+  EMPLOYEE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+  SUSPENDED
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum FeeStatus {
+  PAID
+  PARTIAL
+  UNPAID
+  WAIVED
+}
+
+model User {
+  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+  email    String   @unique
+  password String
+  name     String
+  phone    String?
+  role     UserRole
+
+  schoolId String? @db.ObjectId
+  school   School? @relation("SchoolUsers", fields: [schoolId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive Boolean @default(true)
+
+  ownedSchools             School[]             @relation("SchoolOwner")
+  studentProfile           StudentProfile?
+  staffProfile             StaffProfile?
+  homeroomClasses          Class[]              @relation("ClassHomeroomTeacher")
+  studentAttendancesMarked StudentAttendance[]  @relation("StudentAttendanceMarker")
+  staffAttendancesMarked   StaffAttendance[]    @relation("StaffAttendanceMarker")
+  subscriptionsGranted     SchoolSubscription[] @relation("SubscriptionAccessGrantedBy")
+  paymentsRecorded         Payment[]            @relation("PaymentRecordedBy")
+  feePaymentsCreated       StudentFeePayment[]  @relation("FeePaymentCreatedBy")
+  feePaymentsUpdated       StudentFeePayment[]  @relation("FeePaymentUpdatedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, role])
+}
+
+model School {
+  id              String  @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  code            String? @unique
+  email           String?
+  phone           String?
+  addressLine1    String?
+  addressLine2    String?
+  city            String?
+  state           String?
+  country         String?
+  postalCode      String?
+  logoUrl         String?
+  establishedYear Int?
+
+  ownerId String @db.ObjectId
+  owner   User   @relation("SchoolOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  users              User[]              @relation("SchoolUsers")
+  academicYears      AcademicYear[]
+  classes            Class[]
+  studentProfiles    StudentProfile[]
+  staffProfiles      StaffProfile[]
+  classTeachers      ClassTeacher[]
+  enrollments        Enrollment[]
+  studentAttendances StudentAttendance[]
+  staffAttendances   StaffAttendance[]
+  subscription       SchoolSubscription?
+  payments           Payment[]
+  gradeFees          GradeFee[]
+  studentFeePayments StudentFeePayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model SubscriptionPlan {
+  id                     String          @id @default(auto()) @map("_id") @db.ObjectId
+  name                   String
+  description            String?
+  /// Default per-student price for new schools (smallest currency unit, e.g. paise)
+  defaultPricePerStudent Int
+  currency               String          @default("INR")
+  interval               BillingInterval @default(MONTHLY)
+  /// Free trial length for new schools; default one month
+  trialDays              Int             @default(30)
+  isActive               Boolean         @default(true)
+  sortOrder              Int             @default(0)
+
+  subscriptions SchoolSubscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name])
+  @@index([isActive])
+}
+
+model SchoolSubscription {
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId String @unique @db.ObjectId
+  planId   String @db.ObjectId
+
+  status SubscriptionStatus @default(TRIAL)
+
+  /// School-specific per-student charge (can differ from plan default)
+  pricePerStudent Int
+  currency        String          @default("INR")
+  interval        BillingInterval @default(MONTHLY)
+
+  trialStartsAt DateTime
+  trialEndsAt   DateTime
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+
+  /// Platform access: true during trial or after payment; super admin can toggle
+  isAccessEnabled Boolean @default(true)
+
+  accessGrantedById String?   @db.ObjectId
+  accessGrantedAt   DateTime?
+  accessRevokedAt   DateTime?
+  accessNotes       String?
+
+  cancelledAt DateTime?
+
+  school          School           @relation(fields: [schoolId], references: [id])
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id])
+  accessGrantedBy User?            @relation("SubscriptionAccessGrantedBy", fields: [accessGrantedById], references: [id])
+  payments        Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([planId])
+  @@index([trialEndsAt])
+  @@index([currentPeriodEnd])
+  @@index([isAccessEnabled])
+}
+
+model Payment {
+  id             String @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId       String @db.ObjectId
+  subscriptionId String @db.ObjectId
+
+  /// Snapshot of enrolled students billed for this period
+  studentCount    Int
+  /// Snapshot of the school's per-student rate at billing time
+  pricePerStudent Int
+  /// Total = studentCount * pricePerStudent (smallest currency unit)
+  amount          Int
+  currency        String        @default("INR")
+  status          PaymentStatus @default(PENDING)
+
+  paidAt      DateTime?
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  /// Gateway reference (Razorpay / Stripe / etc.)
+  externalPaymentId String?
+  paymentMethod     String?
+  invoiceNumber     String?
+  notes             String?
+
+  /// Super admin who recorded an offline / manual payment
+  recordedById String? @db.ObjectId
+
+  school       School             @relation(fields: [schoolId], references: [id])
+  subscription SchoolSubscription @relation(fields: [subscriptionId], references: [id])
+  recordedBy   User?              @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, status])
+  @@index([subscriptionId])
+  @@index([externalPaymentId])
+  @@index([paidAt])
+}
+
+model AcademicYear {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId  String   @db.ObjectId
+  school    School   @relation(fields: [schoolId], references: [id])
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+
+  classes            Class[]
+  enrollments        Enrollment[]
+  studentAttendances StudentAttendance[]
+  gradeFees          GradeFee[]
+  studentFeePayments StudentFeePayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, name])
+  @@index([schoolId, isCurrent])
+}
+
+model Class {
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId       String  @db.ObjectId
+  academicYearId String  @db.ObjectId
+  classLevel     String
+  section        String?
+  monthlyFee     Float?
+
+  classTeacherId String? @db.ObjectId
+
+  school       School              @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear        @relation(fields: [academicYearId], references: [id])
+  classTeacher User?               @relation("ClassHomeroomTeacher", fields: [classTeacherId], references: [id])
+  teachers     ClassTeacher[]
+  enrollments  Enrollment[]
+  attendances  StudentAttendance[]
+  feePayments  StudentFeePayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, academicYearId, classLevel, section])
+  @@index([classTeacherId])
+}
+
+model StudentProfile {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String    @unique @db.ObjectId
+  schoolId         String    @db.ObjectId
+  admissionNumber  String
+  rollNumber       String?
+  dateOfBirth      DateTime?
+  gender           String?
+  fatherName       String?
+  motherName       String?
+  guardianName     String?
+  guardianPhone    String?
+  guardianEmail    String?
+  permanentAddress    String?
+  currentAddress      String?
+  address             String?
+  bloodGroup          String?
+  joiningDate         DateTime?
+  leavingDate         DateTime?
+  isCurrentlyStudying Boolean  @default(true)
+
+  user        User                @relation(fields: [userId], references: [id])
+  school      School              @relation(fields: [schoolId], references: [id])
+  enrollments Enrollment[]
+  attendances StudentAttendance[]
+  feePayments StudentFeePayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, admissionNumber])
+  @@index([schoolId])
+}
+
+model StaffProfile {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String    @unique @db.ObjectId
+  schoolId         String    @db.ObjectId
+  staffType        StaffType
+  employeeCode     String
+  designation         String?
+  department          String?
+  joiningDate         DateTime?
+  leavingDate         DateTime?
+  isCurrentlyWorking  Boolean   @default(true)
+  /// Expected daily punch-in time as HH:mm (local school time)
+  expectedPunchInTime  String?
+  /// Expected daily punch-out time as HH:mm (local school time)
+  expectedPunchOutTime String?
+  dateOfBirth         DateTime?
+  address             String?
+  emergencyContact    String?
+
+  user             User              @relation(fields: [userId], references: [id])
+  school           School            @relation(fields: [schoolId], references: [id])
+  classAssignments ClassTeacher[]
+  attendances      StaffAttendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, employeeCode])
+  @@index([schoolId, staffType])
+}
+
+model ClassTeacher {
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId       String  @db.ObjectId
+  classId        String  @db.ObjectId
+  staffProfileId String  @db.ObjectId
+  isPrimary      Boolean @default(false)
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  class        Class        @relation(fields: [classId], references: [id])
+  staffProfile StaffProfile @relation(fields: [staffProfileId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classId, staffProfileId])
+  @@index([staffProfileId])
+  @@index([schoolId])
+}
+
+model Enrollment {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId         String    @db.ObjectId
+  studentProfileId String    @db.ObjectId
+  classId          String    @db.ObjectId
+  academicYearId   String    @db.ObjectId
+  rollNumber       String?
+  enrolledOn       DateTime  @default(now())
+  leftOn           DateTime?
+  isActive         Boolean   @default(true)
+
+  school         School         @relation(fields: [schoolId], references: [id])
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  class          Class          @relation(fields: [classId], references: [id])
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentProfileId, academicYearId])
+  @@index([classId, isActive])
+  @@index([schoolId, academicYearId])
+}
+
+model StudentAttendance {
+  id               String           @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId         String           @db.ObjectId
+  academicYearId   String           @db.ObjectId
+  classId          String           @db.ObjectId
+  studentProfileId String           @db.ObjectId
+  date             DateTime
+  status           AttendanceStatus
+  markedById       String           @db.ObjectId
+  notes            String?
+
+  school         School         @relation(fields: [schoolId], references: [id])
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
+  class          Class          @relation(fields: [classId], references: [id])
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  markedBy       User           @relation("StudentAttendanceMarker", fields: [markedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentProfileId, date])
+  @@index([classId, date])
+  @@index([schoolId, date])
+  @@index([academicYearId, date])
+}
+
+model StaffAttendance {
+  id             String            @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId       String            @db.ObjectId
+  staffProfileId String            @db.ObjectId
+  date           DateTime
+  status         AttendanceStatus?
+  punchInAt      DateTime?
+  punchOutAt     DateTime?
+  markedById     String?           @db.ObjectId
+  notes          String?
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  staffProfile StaffProfile @relation(fields: [staffProfileId], references: [id])
+  markedBy     User?        @relation("StaffAttendanceMarker", fields: [markedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([staffProfileId, date])
+  @@index([schoolId, date])
+}
+
+model GradeFee {
+  id             String @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId       String @db.ObjectId
+  academicYearId String @db.ObjectId
+  gradeLevel     String
+  amount         Float
+  currency       String @default("INR")
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, academicYearId, gradeLevel])
+  @@index([academicYearId])
+}
+
+model StudentFeePayment {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId         String    @db.ObjectId
+  academicYearId   String    @db.ObjectId
+  studentProfileId String    @db.ObjectId
+  classId          String    @db.ObjectId
+  year             Int
+  month            Int
+  status           FeeStatus
+  amountDue        Float
+  amountPaid       Float     @default(0)
+  paidAt           DateTime?
+  notes            String?
+  createdById      String    @db.ObjectId
+  updatedById      String    @db.ObjectId
+
+  school         School         @relation(fields: [schoolId], references: [id])
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  class          Class          @relation(fields: [classId], references: [id])
+  createdBy      User           @relation("FeePaymentCreatedBy", fields: [createdById], references: [id])
+  updatedBy      User           @relation("FeePaymentUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentProfileId, academicYearId, year, month])
+  @@index([schoolId, academicYearId])
+  @@index([academicYearId, year, month])
+}
