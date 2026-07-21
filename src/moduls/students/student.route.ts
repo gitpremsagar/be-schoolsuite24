@@ -12,6 +12,7 @@ import {
   getMyStudentProfile,
   getStudent,
   listStudents,
+  purgeStudent,
   updateStudent,
 } from "./student.controller.js";
 
@@ -26,5 +27,6 @@ router.post("/", requireRoles("ADMIN"), createStudent);
 router.get("/:id", requireRoles("ADMIN", "TEACHER"), getStudent);
 router.patch("/:id", requireRoles("ADMIN"), updateStudent);
 router.post("/:id/enrollments", requireRoles("ADMIN"), enrollStudent);
+router.post("/:id/purge", requireRoles("ADMIN"), purgeStudent);
 
 export default router;

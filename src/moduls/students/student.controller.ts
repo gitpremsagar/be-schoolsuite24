@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { prisma } from "../../lib/prisma.js";
-import { AppError, badRequest, conflict, notFound } from "../../lib/errors.js";
+import { AppError, badRequest, conflict, forbidden, notFound } from "../../lib/errors.js";
 import { getAuthUser, requireSchoolId } from "../../middleware/auth.js";
 import { handleControllerError } from "../auth/auth.controller.js";
 import { param } from "../../lib/params.js";
@@ -702,5 +702,80 @@ export async function getMyStudentProfile(req: Request, res: Response) {
     res.json({ student: profile });
   } catch (error) {
     handleControllerError(res, error, "Failed to fetch student profile");
+  }
+}
+
+/** Permanently delete a student after verifying the admin's own password. */
+export async function purgeStudent(req: Request, res: Response) {
+  try {
+    const schoolId = requireSchoolId(req);
+    const auth = getAuthUser(req);
+    const id = param(req, "id");
+    const { password } = req.body as { password?: string };
+
+    if (!password) {
+      throw badRequest(
+        "Admin password is required to permanently delete a student",
+      );
+    }
+
+    const existing = await prisma.studentProfile.findFirst({
+      where: { id, schoolId },
+      include: {
+        user: { select: { id: true, role: true } },
+      },
+    });
+    if (!existing) {
+      throw notFound("Student not found");
+    }
+
+    if (existing.userId === auth.userId) {
+      throw forbidden("You cannot permanently delete your own account");
+    }
+
+    const admin = await prisma.user.findUnique({
+      where: { id: auth.userId },
+    });
+    if (!admin || admin.schoolId !== schoolId) {
+      throw forbidden("Admin not found for this school");
+    }
+
+    const valid = await bcrypt.compare(password, admin.password);
+    if (!valid) {
+      throw forbidden("Incorrect admin password");
+    }
+
+    const userId = existing.userId;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.studentFeePayment.deleteMany({
+        where: { studentProfileId: id },
+      });
+      await tx.studentAttendance.deleteMany({
+        where: { studentProfileId: id },
+      });
+      await tx.enrollment.deleteMany({
+        where: { studentProfileId: id },
+      });
+      await tx.studentAttendance.updateMany({
+        where: { markedById: userId },
+        data: { markedById: auth.userId },
+      });
+      await tx.studentFeePayment.updateMany({
+        where: { createdById: userId },
+        data: { createdById: auth.userId },
+      });
+      await tx.studentFeePayment.updateMany({
+        where: { updatedById: userId },
+        data: { updatedById: auth.userId },
+      });
+
+      await tx.studentProfile.delete({ where: { id } });
+      await tx.user.delete({ where: { id: userId } });
+    });
+
+    res.json({ ok: true, permanent: true });
+  } catch (error) {
+    handleControllerError(res, error, "Failed to permanently delete student");
   }
 }
