@@ -45,7 +45,9 @@ function issueTokens(res, user) {
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
     setRefreshCookie(res, refreshToken);
-    return { accessToken, user: publicUser(user) };
+    // refreshToken is also returned in the body for mobile clients (SecureStore).
+    // Web continues to use the httpOnly cookie.
+    return { accessToken, refreshToken, user: publicUser(user) };
 }
 async function getOrCreateDefaultPlan() {
     const existing = await prisma.subscriptionPlan.findFirst({
@@ -175,7 +177,10 @@ export async function login(req, res) {
 }
 export async function refresh(req, res) {
     try {
-        const token = req.cookies?.[config.refreshCookieName];
+        const bodyToken = req.body
+            ?.refreshToken;
+        const token = req.cookies?.[config.refreshCookieName] ||
+            bodyToken;
         if (!token) {
             res.status(401).json({ error: "Refresh token missing" });
             return;

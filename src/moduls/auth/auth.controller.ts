@@ -66,7 +66,9 @@ function issueTokens(res: Response, user: User) {
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
   setRefreshCookie(res, refreshToken);
-  return { accessToken, user: publicUser(user) };
+  // refreshToken is also returned in the body for mobile clients (SecureStore).
+  // Web continues to use the httpOnly cookie.
+  return { accessToken, refreshToken, user: publicUser(user) };
 }
 
 async function getOrCreateDefaultPlan() {
@@ -245,7 +247,11 @@ export async function login(req: Request, res: Response) {
 
 export async function refresh(req: Request, res: Response) {
   try {
-    const token = req.cookies?.[config.refreshCookieName] as string | undefined;
+    const bodyToken = (req.body as { refreshToken?: string } | undefined)
+      ?.refreshToken;
+    const token =
+      (req.cookies?.[config.refreshCookieName] as string | undefined) ||
+      bodyToken;
     if (!token) {
       res.status(401).json({ error: "Refresh token missing" });
       return;

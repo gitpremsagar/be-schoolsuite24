@@ -76,6 +76,7 @@ model User {
   paymentsRecorded         Payment[]            @relation("PaymentRecordedBy")
   feePaymentsCreated       StudentFeePayment[]  @relation("FeePaymentCreatedBy")
   feePaymentsUpdated       StudentFeePayment[]  @relation("FeePaymentUpdatedBy")
+  holidaysCreated          SchoolHoliday[]      @relation("HolidayCreatedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -114,6 +115,7 @@ model School {
   payments           Payment[]
   gradeFees          GradeFee[]
   studentFeePayments StudentFeePayment[]
+  holidays           SchoolHoliday[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -476,4 +478,21 @@ model StudentFeePayment {
   @@unique([studentProfileId, academicYearId, year, month])
   @@index([schoolId, academicYearId])
   @@index([academicYearId, year, month])
+}
+
+model SchoolHoliday {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId    String   @db.ObjectId
+  date        DateTime
+  name        String?
+  notes       String?
+  createdById String   @db.ObjectId
+
+  school    School @relation(fields: [schoolId], references: [id])
+  createdBy User   @relation("HolidayCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, date])
 }

@@ -12,6 +12,7 @@ import staffRoutes from "./moduls/staff/staff.route.js";
 import attendanceRoutes from "./moduls/attendance/attendance.route.js";
 import billingRoutes from "./moduls/billing/billing.route.js";
 import feeRoutes from "./moduls/fees/fee.route.js";
+import holidayRoutes from "./moduls/holidays/holiday.route.js";
 import { AppError } from "./lib/errors.js";
 import { config } from "./lib/config.js";
 const app = express();
@@ -37,6 +38,7 @@ app.use("/staff", staffRoutes);
 app.use("/attendance", attendanceRoutes);
 app.use("/billing", billingRoutes);
 app.use("/fees", feeRoutes);
+app.use("/holidays", holidayRoutes);
 app.use("/users", userRoutes);
 app.use((err, _req, res, _next) => {
     if (err instanceof AppError) {

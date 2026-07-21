@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import type { AttendanceStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { toUtcDay, utcDayKey, utcMonthRange } from "../../lib/dates.js";
+import { listHolidayKeysForMonth } from "../../lib/holidays.js";
 import { formatClassLabel } from "../../lib/class-levels.js";
 import { badRequest, forbidden, notFound } from "../../lib/errors.js";
 import { getAuthUser, requireSchoolId } from "../../middleware/auth.js";
@@ -163,12 +164,15 @@ export async function getClassMonthlyAttendance(req: Request, res: Response) {
       );
     }
 
+    const holidays = await listHolidayKeysForMonth(schoolId, year, month);
+
     res.json({
       classId: classId ?? null,
       year,
       month,
       daysInMonth,
       days,
+      holidays,
       students: enrollments.map((e) => {
         const dayMarks: Record<string, AttendanceStatus | null> = {};
         for (const day of days) {
@@ -265,8 +269,30 @@ export async function upsertStudentMonthlyAttendance(
       }
     }
 
+    const uniqueMonths = new Map<string, { year: number; month: number }>();
+    for (const record of records) {
+      const d = toUtcDay(record.date);
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth() + 1;
+      uniqueMonths.set(`${y}-${m}`, { year: y, month: m });
+    }
+    const holidayKeySet = new Set<string>();
+    for (const { year, month } of uniqueMonths.values()) {
+      const monthHolidays = await listHolidayKeysForMonth(schoolId, year, month);
+      for (const h of monthHolidays) holidayKeySet.add(h);
+    }
+
+    const writableRecords = records.filter(
+      (r) => !holidayKeySet.has(utcDayKey(toUtcDay(r.date))),
+    );
+
+    if (writableRecords.length === 0) {
+      res.json({ count: 0, records: [], skippedHolidays: records.length });
+      return;
+    }
+
     const saved = await prisma.$transaction(
-      records.map((record) => {
+      writableRecords.map((record) => {
         const cid = record.classId ?? bodyClassId!;
         const klass = classById.get(cid)!;
         const date = toUtcDay(record.date);
@@ -296,7 +322,11 @@ export async function upsertStudentMonthlyAttendance(
       }),
     );
 
-    res.json({ count: saved.length, records: saved });
+    res.json({
+      count: saved.length,
+      records: saved,
+      skippedHolidays: records.length - writableRecords.length,
+    });
   } catch (error) {
     handleControllerError(res, error, "Failed to save monthly attendance");
   }
@@ -559,6 +589,7 @@ export async function getStaffMonthlyAttendance(req: Request, res: Response) {
       month,
       daysInMonth,
       days,
+      holidays: await listHolidayKeysForMonth(schoolId, year, month),
       staff: staff.map((s) => {
         const dayMarks: Record<
           string,
@@ -658,9 +689,31 @@ export async function upsertStaffMonthlyAttendance(
       }
     }
 
+    const uniqueMonths = new Map<string, { year: number; month: number }>();
+    for (const record of records) {
+      const d = toUtcDay(record.date);
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth() + 1;
+      uniqueMonths.set(`${y}-${m}`, { year: y, month: m });
+    }
+    const holidayKeySet = new Set<string>();
+    for (const { year, month } of uniqueMonths.values()) {
+      const monthHolidays = await listHolidayKeysForMonth(schoolId, year, month);
+      for (const h of monthHolidays) holidayKeySet.add(h);
+    }
+
+    const writableRecords = records.filter(
+      (r) => !holidayKeySet.has(utcDayKey(toUtcDay(r.date))),
+    );
+
+    if (writableRecords.length === 0) {
+      res.json({ count: 0, records: [], skippedHolidays: records.length });
+      return;
+    }
+
     const saved = await prisma.$transaction(async (tx) => {
       const results = [];
-      for (const record of records) {
+      for (const record of writableRecords) {
         const date = toUtcDay(record.date);
         if (record.status == null) {
           await tx.staffAttendance.deleteMany({
@@ -730,7 +783,11 @@ export async function upsertStaffMonthlyAttendance(
       return results;
     });
 
-    res.json({ count: saved.length, records: saved });
+    res.json({
+      count: saved.length,
+      records: saved,
+      skippedHolidays: records.length - writableRecords.length,
+    });
   } catch (error) {
     handleControllerError(res, error, "Failed to save staff monthly attendance");
   }

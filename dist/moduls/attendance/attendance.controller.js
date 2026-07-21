@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { toUtcDay, utcDayKey, utcMonthRange } from "../../lib/dates.js";
+import { listHolidayKeysForMonth } from "../../lib/holidays.js";
 import { formatClassLabel } from "../../lib/class-levels.js";
 import { badRequest, forbidden, notFound } from "../../lib/errors.js";
 import { getAuthUser, requireSchoolId } from "../../middleware/auth.js";
@@ -140,12 +141,14 @@ export async function getClassMonthlyAttendance(req, res) {
         for (const row of existing) {
             byStudentDay.set(`${row.studentProfileId}:${utcDayKey(row.date)}`, row.status);
         }
+        const holidays = await listHolidayKeysForMonth(schoolId, year, month);
         res.json({
             classId: classId ?? null,
             year,
             month,
             daysInMonth,
             days,
+            holidays,
             students: enrollments.map((e) => {
                 const dayMarks = {};
                 for (const day of days) {
@@ -219,7 +222,25 @@ export async function upsertStudentMonthlyAttendance(req, res) {
                 }
             }
         }
-        const saved = await prisma.$transaction(records.map((record) => {
+        const uniqueMonths = new Map();
+        for (const record of records) {
+            const d = toUtcDay(record.date);
+            const y = d.getUTCFullYear();
+            const m = d.getUTCMonth() + 1;
+            uniqueMonths.set(`${y}-${m}`, { year: y, month: m });
+        }
+        const holidayKeySet = new Set();
+        for (const { year, month } of uniqueMonths.values()) {
+            const monthHolidays = await listHolidayKeysForMonth(schoolId, year, month);
+            for (const h of monthHolidays)
+                holidayKeySet.add(h);
+        }
+        const writableRecords = records.filter((r) => !holidayKeySet.has(utcDayKey(toUtcDay(r.date))));
+        if (writableRecords.length === 0) {
+            res.json({ count: 0, records: [], skippedHolidays: records.length });
+            return;
+        }
+        const saved = await prisma.$transaction(writableRecords.map((record) => {
             const cid = record.classId ?? bodyClassId;
             const klass = classById.get(cid);
             const date = toUtcDay(record.date);
@@ -247,7 +268,11 @@ export async function upsertStudentMonthlyAttendance(req, res) {
                 },
             });
         }));
-        res.json({ count: saved.length, records: saved });
+        res.json({
+            count: saved.length,
+            records: saved,
+            skippedHolidays: records.length - writableRecords.length,
+        });
     }
     catch (error) {
         handleControllerError(res, error, "Failed to save monthly attendance");
@@ -472,6 +497,7 @@ export async function getStaffMonthlyAttendance(req, res) {
             month,
             daysInMonth,
             days,
+            holidays: await listHolidayKeysForMonth(schoolId, year, month),
             staff: staff.map((s) => {
                 const dayMarks = {};
                 for (const day of days) {
@@ -547,9 +573,27 @@ export async function upsertStaffMonthlyAttendance(req, res) {
                 }
             }
         }
+        const uniqueMonths = new Map();
+        for (const record of records) {
+            const d = toUtcDay(record.date);
+            const y = d.getUTCFullYear();
+            const m = d.getUTCMonth() + 1;
+            uniqueMonths.set(`${y}-${m}`, { year: y, month: m });
+        }
+        const holidayKeySet = new Set();
+        for (const { year, month } of uniqueMonths.values()) {
+            const monthHolidays = await listHolidayKeysForMonth(schoolId, year, month);
+            for (const h of monthHolidays)
+                holidayKeySet.add(h);
+        }
+        const writableRecords = records.filter((r) => !holidayKeySet.has(utcDayKey(toUtcDay(r.date))));
+        if (writableRecords.length === 0) {
+            res.json({ count: 0, records: [], skippedHolidays: records.length });
+            return;
+        }
         const saved = await prisma.$transaction(async (tx) => {
             const results = [];
-            for (const record of records) {
+            for (const record of writableRecords) {
                 const date = toUtcDay(record.date);
                 if (record.status == null) {
                     await tx.staffAttendance.deleteMany({
@@ -615,7 +659,11 @@ export async function upsertStaffMonthlyAttendance(req, res) {
             }
             return results;
         });
-        res.json({ count: saved.length, records: saved });
+        res.json({
+            count: saved.length,
+            records: saved,
+            skippedHolidays: records.length - writableRecords.length,
+        });
     }
     catch (error) {
         handleControllerError(res, error, "Failed to save staff monthly attendance");
