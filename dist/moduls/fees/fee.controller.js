@@ -26,6 +26,21 @@ export function monthsInRange(start, end) {
     }
     return months;
 }
+function monthOrdinal(year, month) {
+    return year * 12 + month;
+}
+/**
+ * Fee liability starts in the admission month (inclusive).
+ * Months strictly before joiningDate are not applicable.
+ * Missing joiningDate keeps all months applicable (legacy behavior).
+ */
+export function isFeeMonthApplicable(joiningDate, year, month) {
+    if (!joiningDate)
+        return true;
+    const joinY = joiningDate.getUTCFullYear();
+    const joinM = joiningDate.getUTCMonth() + 1;
+    return monthOrdinal(year, month) >= monthOrdinal(joinY, joinM);
+}
 async function resolveAcademicYear(schoolId, academicYearId) {
     if (academicYearId) {
         const year = await prisma.academicYear.findFirst({
@@ -173,7 +188,11 @@ export async function getFeeRegister(req, res) {
                         },
                     },
                     studentProfile: {
-                        include: {
+                        select: {
+                            id: true,
+                            admissionNumber: true,
+                            rollNumber: true,
+                            joiningDate: true,
                             user: { select: { id: true, name: true, email: true } },
                         },
                     },
@@ -206,10 +225,29 @@ export async function getFeeRegister(req, res) {
             months,
             students: sorted.map((e) => {
                 const monthlyFee = e.class.monthlyFee;
+                const joiningDate = e.studentProfile.joiningDate;
                 const monthMap = {};
                 for (const mo of months) {
+                    const applicable = isFeeMonthApplicable(joiningDate, mo.year, mo.month);
                     const hit = paymentByKey.get(`${e.studentProfileId}:${mo.year}-${String(mo.month).padStart(2, "0")}`);
-                    if (hit) {
+                    if (!applicable) {
+                        // Pre-admission: never treat as unpaid, even if a legacy row exists.
+                        monthMap[mo.key] = {
+                            status: "UNPAID",
+                            amountDue: null,
+                            amountPaid: 0,
+                            feeAmount: null,
+                            paidAt: null,
+                            notes: null,
+                            paymentId: null,
+                            isApplicable: false,
+                            createdBy: null,
+                            updatedBy: null,
+                            createdAt: null,
+                            updatedAt: null,
+                        };
+                    }
+                    else if (hit) {
                         const normalized = normalizeFeeAmounts({
                             status: hit.status,
                             amountDue: hit.amountDue,
@@ -224,6 +262,7 @@ export async function getFeeRegister(req, res) {
                             paidAt: hit.paidAt ? hit.paidAt.toISOString() : null,
                             notes: hit.notes,
                             paymentId: hit.id,
+                            isApplicable: true,
                             createdBy: hit.createdBy,
                             updatedBy: hit.updatedBy,
                             createdAt: hit.createdAt.toISOString(),
@@ -239,6 +278,7 @@ export async function getFeeRegister(req, res) {
                             paidAt: null,
                             notes: null,
                             paymentId: null,
+                            isApplicable: true,
                             createdBy: null,
                             updatedBy: null,
                             createdAt: null,
@@ -251,6 +291,7 @@ export async function getFeeRegister(req, res) {
                     studentProfileId: e.studentProfileId,
                     admissionNumber: e.studentProfile.admissionNumber,
                     rollNumber: e.rollNumber ?? e.studentProfile.rollNumber,
+                    joiningDate: joiningDate ? joiningDate.toISOString() : null,
                     name: e.studentProfile.user.name,
                     email: e.studentProfile.user.email,
                     classId: e.classId,
@@ -373,10 +414,17 @@ export async function upsertStudentFeePayment(req, res) {
                 academicYearId: academicYear.id,
                 isActive: true,
             },
-            include: { class: true },
+            include: {
+                class: true,
+                studentProfile: { select: { joiningDate: true } },
+            },
         });
         if (!enrollment) {
             throw notFound("Active enrollment not found for this student/year");
+        }
+        const joiningDate = enrollment.studentProfile.joiningDate;
+        if (!isFeeMonthApplicable(joiningDate, year, month)) {
+            throw badRequest("Fee is not applicable before the student's date of admission");
         }
         const classMonthlyFee = enrollment.class.monthlyFee ?? 0;
         const feeAmount = typeof feeAmountRaw === "number" && !Number.isNaN(feeAmountRaw) && feeAmountRaw >= 0
@@ -423,11 +471,12 @@ export async function upsertStudentFeePayment(req, res) {
         }
         // PAID: also mark all earlier months in the year as paid.
         // UNPAID: also mark all later months in the year as unpaid.
-        const monthsToUpsert = resolved.status === "PAID"
+        // Never cascade into months before the student's admission date.
+        const monthsToUpsert = (resolved.status === "PAID"
             ? yearMonths.filter((m) => m.year * 12 + m.month <= targetOrdinal)
             : resolved.status === "UNPAID"
                 ? yearMonths.filter((m) => m.year * 12 + m.month >= targetOrdinal)
-                : yearMonths.filter((m) => m.year === year && m.month === month);
+                : yearMonths.filter((m) => m.year === year && m.month === month)).filter((m) => isFeeMonthApplicable(joiningDate, m.year, m.month));
         const auditInclude = {
             createdBy: { select: { id: true, name: true, email: true } },
             updatedBy: { select: { id: true, name: true, email: true } },

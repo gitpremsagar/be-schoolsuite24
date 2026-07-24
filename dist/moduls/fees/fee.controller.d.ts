@@ -8,6 +8,12 @@ export declare function monthsInRange(start: Date, end: Date): Array<{
     label: string;
 }>;
 /**
+ * Fee liability starts in the admission month (inclusive).
+ * Months strictly before joiningDate are not applicable.
+ * Missing joiningDate keeps all months applicable (legacy behavior).
+ */
+export declare function isFeeMonthApplicable(joiningDate: Date | null | undefined, year: number, month: number): boolean;
+/**
  * amountDue is the remaining balance; amountPaid is what was paid.
  * Legacy rows stored the full fee in amountDue — normalize those on read.
  */

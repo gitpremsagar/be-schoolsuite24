@@ -12,7 +12,8 @@
     "start": "node dist/server.js",
     "db:push": "prisma db push",
     "db:seed": "tsx scripts/seed-super-admin.ts",
-    "verify": "tsx scripts/verify-domain.ts"
+    "verify": "tsx scripts/verify-domain.ts",
+    "postinstall": "npx prisma generate"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
