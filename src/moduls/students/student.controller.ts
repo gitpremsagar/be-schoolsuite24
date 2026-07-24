@@ -235,9 +235,19 @@ export async function listStudents(req: Request, res: Response) {
         schoolId,
         ...(!wantAll && academicYearId
           ? {
-              enrollments: {
-                some: { academicYearId, isActive: true },
-              },
+              // Enrolled in this year, or not assigned to any class for this year yet.
+              OR: [
+                {
+                  enrollments: {
+                    some: { academicYearId, isActive: true },
+                  },
+                },
+                {
+                  enrollments: {
+                    none: { academicYearId },
+                  },
+                },
+              ],
             }
           : {}),
       },
