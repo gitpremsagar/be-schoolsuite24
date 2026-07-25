@@ -10,6 +10,7 @@ import {
   getClassAttendance,
   getClassMonthlyAttendance,
   getMyStaffAttendanceToday,
+  getMyStaffMonthlyAttendance,
   getMyStudentAttendance,
   getStaffMonthlyAttendance,
   listStaffAttendance,
@@ -47,6 +48,11 @@ router.post(
 );
 router.get("/students/me", requireRoles("STUDENT"), getMyStudentAttendance);
 
+router.get(
+  "/staff/me/month",
+  requireRoles("ADMIN", "TEACHER", "EMPLOYEE"),
+  getMyStaffMonthlyAttendance,
+);
 router.get(
   "/staff/month",
   requireRoles("ADMIN"),

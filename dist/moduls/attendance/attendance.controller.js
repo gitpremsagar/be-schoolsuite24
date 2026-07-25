@@ -437,6 +437,71 @@ export async function getMyStaffAttendanceToday(req, res) {
         handleControllerError(res, error, "Failed to fetch attendance");
     }
 }
+/** Own staff attendance month register (teacher/employee self-service). */
+export async function getMyStaffMonthlyAttendance(req, res) {
+    try {
+        const auth = getAuthUser(req);
+        const schoolId = requireSchoolId(req);
+        const { year, month } = parseYearMonth(req);
+        const { start, end, daysInMonth } = utcMonthRange(year, month);
+        const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+        const staff = await prisma.staffProfile.findUnique({
+            where: { userId: auth.userId },
+            include: {
+                user: { select: { id: true, name: true, email: true, role: true } },
+            },
+        });
+        if (!staff || staff.schoolId !== schoolId) {
+            throw notFound("Staff profile not found");
+        }
+        const records = await prisma.staffAttendance.findMany({
+            where: {
+                schoolId,
+                staffProfileId: staff.id,
+                date: { gte: start, lte: end },
+            },
+        });
+        const byDay = new Map();
+        for (const row of records) {
+            byDay.set(utcDayKey(row.date), {
+                status: row.status ?? "PRESENT",
+                punchInAt: row.punchInAt,
+                punchOutAt: row.punchOutAt,
+            });
+        }
+        const dayMarks = {};
+        for (const day of days) {
+            const key = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            const hit = byDay.get(key);
+            dayMarks[String(day)] = hit
+                ? {
+                    status: hit.status,
+                    punchInAt: hit.punchInAt ? hit.punchInAt.toISOString() : null,
+                    punchOutAt: hit.punchOutAt ? hit.punchOutAt.toISOString() : null,
+                }
+                : null;
+        }
+        res.json({
+            year,
+            month,
+            daysInMonth,
+            days,
+            holidays: await listHolidayKeysForMonth(schoolId, year, month),
+            staff: {
+                staffProfileId: staff.id,
+                employeeCode: staff.employeeCode,
+                staffType: staff.staffType,
+                name: staff.user.name,
+                email: staff.user.email,
+                role: staff.user.role,
+                days: dayMarks,
+            },
+        });
+    }
+    catch (error) {
+        handleControllerError(res, error, "Failed to load your monthly attendance");
+    }
+}
 export async function listStaffAttendance(req, res) {
     try {
         const schoolId = requireSchoolId(req);

@@ -8,6 +8,8 @@ export declare function upsertStudentAttendance(req: Request, res: Response): Pr
 export declare function punchIn(req: Request, res: Response): Promise<void>;
 export declare function punchOut(req: Request, res: Response): Promise<void>;
 export declare function getMyStaffAttendanceToday(req: Request, res: Response): Promise<void>;
+/** Own staff attendance month register (teacher/employee self-service). */
+export declare function getMyStaffMonthlyAttendance(req: Request, res: Response): Promise<void>;
 export declare function listStaffAttendance(req: Request, res: Response): Promise<void>;
 /** Full-month staff attendance register for the school. */
 export declare function getStaffMonthlyAttendance(req: Request, res: Response): Promise<void>;
