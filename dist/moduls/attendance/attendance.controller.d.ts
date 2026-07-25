@@ -7,6 +7,15 @@ export declare function upsertStudentMonthlyAttendance(req: Request, res: Respon
 export declare function upsertStudentAttendance(req: Request, res: Response): Promise<void>;
 export declare function punchIn(req: Request, res: Response): Promise<void>;
 export declare function punchOut(req: Request, res: Response): Promise<void>;
+/** The school-wide QR secret staff scan to punch in/out. */
+export declare function getStaffPunchQr(req: Request, res: Response): Promise<void>;
+/** Issue a new secret so every previously printed poster stops working. */
+export declare function rotateStaffPunchQr(req: Request, res: Response): Promise<void>;
+/**
+ * Punch in or out by scanning the school QR poster. The scan only proves the
+ * staff member is at school; identity comes from the access token.
+ */
+export declare function qrPunch(req: Request, res: Response): Promise<void>;
 export declare function getMyStaffAttendanceToday(req: Request, res: Response): Promise<void>;
 /** Own staff attendance month register (teacher/employee self-service). */
 export declare function getMyStaffMonthlyAttendance(req: Request, res: Response): Promise<void>;

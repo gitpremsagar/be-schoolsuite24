@@ -7,5 +7,6 @@ export declare const config: {
     readonly refreshCookieMaxAge: number;
     readonly isProduction: boolean;
     readonly refreshCookieName: "refreshToken";
+    readonly staffPunchQrLinkBase: string;
 };
 //# sourceMappingURL=config.d.ts.map

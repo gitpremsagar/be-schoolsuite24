@@ -1,6 +1,8 @@
+import { randomBytes } from "node:crypto";
 import type { Request, Response } from "express";
-import type { AttendanceStatus } from "@prisma/client";
+import type { AttendanceStatus, PunchMethod, StaffProfile } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+import { config } from "../../lib/config.js";
 import { toUtcDay, utcDayKey, utcMonthRange } from "../../lib/dates.js";
 import { listHolidayKeysForMonth } from "../../lib/holidays.js";
 import { formatClassLabel } from "../../lib/class-levels.js";
@@ -410,40 +412,70 @@ export async function upsertStudentAttendance(req: Request, res: Response) {
   }
 }
 
+async function requireOwnStaffProfile(req: Request): Promise<StaffProfile> {
+  const auth = getAuthUser(req);
+  const staff = await prisma.staffProfile.findUnique({
+    where: { userId: auth.userId },
+  });
+  if (!staff) {
+    throw notFound("Staff profile not found");
+  }
+  return staff;
+}
+
+function findTodayStaffAttendance(staffProfileId: string, date: Date) {
+  return prisma.staffAttendance.findUnique({
+    where: { staffProfileId_date: { staffProfileId, date } },
+  });
+}
+
+async function createPunchIn(
+  staff: StaffProfile,
+  schoolId: string,
+  method: PunchMethod,
+) {
+  const date = toUtcDay(new Date());
+  const existing = await findTodayStaffAttendance(staff.id, date);
+  if (existing) {
+    throw badRequest("Already punched in today");
+  }
+
+  return prisma.staffAttendance.create({
+    data: {
+      schoolId,
+      staffProfileId: staff.id,
+      date,
+      status: "PRESENT",
+      punchInAt: new Date(),
+      punchInMethod: method,
+    },
+  });
+}
+
+async function applyPunchOut(staff: StaffProfile, method: PunchMethod) {
+  const date = toUtcDay(new Date());
+  const existing = await findTodayStaffAttendance(staff.id, date);
+  if (!existing) {
+    throw badRequest("Punch in first");
+  }
+  if (!existing.punchInAt || existing.status === "ABSENT") {
+    throw badRequest("Cannot punch out without a present punch-in");
+  }
+  if (existing.punchOutAt) {
+    throw badRequest("Already punched out today");
+  }
+
+  return prisma.staffAttendance.update({
+    where: { id: existing.id },
+    data: { punchOutAt: new Date(), punchOutMethod: method },
+  });
+}
+
 export async function punchIn(req: Request, res: Response) {
   try {
-    const auth = getAuthUser(req);
     const schoolId = requireSchoolId(req);
-    const staff = await prisma.staffProfile.findUnique({
-      where: { userId: auth.userId },
-    });
-    if (!staff) {
-      throw notFound("Staff profile not found");
-    }
-
-    const date = toUtcDay(new Date());
-    const existing = await prisma.staffAttendance.findUnique({
-      where: {
-        staffProfileId_date: {
-          staffProfileId: staff.id,
-          date,
-        },
-      },
-    });
-    if (existing) {
-      throw badRequest("Already punched in today");
-    }
-
-    const record = await prisma.staffAttendance.create({
-      data: {
-        schoolId,
-        staffProfileId: staff.id,
-        date,
-        status: "PRESENT",
-        punchInAt: new Date(),
-      },
-    });
-
+    const staff = await requireOwnStaffProfile(req);
+    const record = await createPunchIn(staff, schoolId, "MANUAL");
     res.status(201).json({ attendance: record });
   } catch (error) {
     handleControllerError(res, error, "Failed to punch in");
@@ -452,41 +484,107 @@ export async function punchIn(req: Request, res: Response) {
 
 export async function punchOut(req: Request, res: Response) {
   try {
-    const auth = getAuthUser(req);
-    const staff = await prisma.staffProfile.findUnique({
-      where: { userId: auth.userId },
-    });
-    if (!staff) {
-      throw notFound("Staff profile not found");
-    }
-
-    const date = toUtcDay(new Date());
-    const existing = await prisma.staffAttendance.findUnique({
-      where: {
-        staffProfileId_date: {
-          staffProfileId: staff.id,
-          date,
-        },
-      },
-    });
-    if (!existing) {
-      throw badRequest("Punch in first");
-    }
-    if (!existing.punchInAt || existing.status === "ABSENT") {
-      throw badRequest("Cannot punch out without a present punch-in");
-    }
-    if (existing.punchOutAt) {
-      throw badRequest("Already punched out today");
-    }
-
-    const record = await prisma.staffAttendance.update({
-      where: { id: existing.id },
-      data: { punchOutAt: new Date() },
-    });
-
+    const staff = await requireOwnStaffProfile(req);
+    const record = await applyPunchOut(staff, "MANUAL");
     res.json({ attendance: record });
   } catch (error) {
     handleControllerError(res, error, "Failed to punch out");
+  }
+}
+
+function buildQrPunchLink(secret: string) {
+  return `${config.staffPunchQrLinkBase}?token=${encodeURIComponent(secret)}`;
+}
+
+function newQrSecret() {
+  return randomBytes(24).toString("base64url");
+}
+
+async function getOrCreateStaffPunchQr(schoolId: string) {
+  const existing = await prisma.staffPunchQr.findUnique({
+    where: { schoolId },
+  });
+  if (existing) {
+    return existing;
+  }
+  return prisma.staffPunchQr.create({
+    data: { schoolId, secret: newQrSecret() },
+  });
+}
+
+/** The school-wide QR secret staff scan to punch in/out. */
+export async function getStaffPunchQr(req: Request, res: Response) {
+  try {
+    const schoolId = requireSchoolId(req);
+    const qr = await getOrCreateStaffPunchQr(schoolId);
+    res.json({
+      qr: {
+        token: qr.secret,
+        link: buildQrPunchLink(qr.secret),
+        rotatedAt: qr.rotatedAt,
+      },
+    });
+  } catch (error) {
+    handleControllerError(res, error, "Failed to load the punch QR code");
+  }
+}
+
+/** Issue a new secret so every previously printed poster stops working. */
+export async function rotateStaffPunchQr(req: Request, res: Response) {
+  try {
+    const schoolId = requireSchoolId(req);
+    await getOrCreateStaffPunchQr(schoolId);
+    const secret = newQrSecret();
+    const qr = await prisma.staffPunchQr.update({
+      where: { schoolId },
+      data: { secret, rotatedAt: new Date() },
+    });
+    res.json({
+      qr: {
+        token: qr.secret,
+        link: buildQrPunchLink(qr.secret),
+        rotatedAt: qr.rotatedAt,
+      },
+    });
+  } catch (error) {
+    handleControllerError(res, error, "Failed to regenerate the punch QR code");
+  }
+}
+
+/**
+ * Punch in or out by scanning the school QR poster. The scan only proves the
+ * staff member is at school; identity comes from the access token.
+ */
+export async function qrPunch(req: Request, res: Response) {
+  try {
+    const schoolId = requireSchoolId(req);
+    const { token } = (req.body ?? {}) as { token?: unknown };
+    if (typeof token !== "string" || !token.trim()) {
+      throw badRequest("token is required");
+    }
+
+    const qr = await prisma.staffPunchQr.findUnique({ where: { schoolId } });
+    if (!qr || qr.secret !== token.trim()) {
+      throw badRequest("This QR code is not valid for your school");
+    }
+
+    const staff = await requireOwnStaffProfile(req);
+    const date = toUtcDay(new Date());
+    const existing = await findTodayStaffAttendance(staff.id, date);
+
+    if (!existing) {
+      const record = await createPunchIn(staff, schoolId, "QR");
+      res.status(201).json({ action: "PUNCH_IN", attendance: record });
+      return;
+    }
+    if (existing.punchOutAt) {
+      throw badRequest("You have already punched in and out today");
+    }
+
+    const record = await applyPunchOut(staff, "QR");
+    res.json({ action: "PUNCH_OUT", attendance: record });
+  } catch (error) {
+    handleControllerError(res, error, "Failed to record the QR punch");
   }
 }
 

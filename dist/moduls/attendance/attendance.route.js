@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireActiveSubscription, requireRoles, requireSchoolAccess, } from "../../middleware/auth.js";
-import { correctStaffAttendance, getClassAttendance, getClassMonthlyAttendance, getMyStaffAttendanceToday, getMyStaffMonthlyAttendance, getMyStudentAttendance, getStaffMonthlyAttendance, listStaffAttendance, punchIn, punchOut, upsertStaffDayAttendance, upsertStaffMonthlyAttendance, upsertStudentAttendance, upsertStudentMonthlyAttendance, } from "./attendance.controller.js";
+import { correctStaffAttendance, getClassAttendance, getClassMonthlyAttendance, getMyStaffAttendanceToday, getMyStaffMonthlyAttendance, getMyStudentAttendance, getStaffMonthlyAttendance, getStaffPunchQr, listStaffAttendance, punchIn, punchOut, qrPunch, rotateStaffPunchQr, upsertStaffDayAttendance, upsertStaffMonthlyAttendance, upsertStudentAttendance, upsertStudentMonthlyAttendance, } from "./attendance.controller.js";
 const router = Router();
 router.use(requireAuth, requireSchoolAccess, requireActiveSubscription);
 router.get("/students/month", requireRoles("ADMIN", "TEACHER"), getClassMonthlyAttendance);
@@ -15,6 +15,9 @@ router.post("/staff/day", requireRoles("ADMIN"), upsertStaffDayAttendance);
 router.get("/staff/today", requireRoles("ADMIN", "TEACHER", "EMPLOYEE"), getMyStaffAttendanceToday);
 router.post("/staff/punch-in", requireRoles("ADMIN", "TEACHER", "EMPLOYEE"), punchIn);
 router.post("/staff/punch-out", requireRoles("ADMIN", "TEACHER", "EMPLOYEE"), punchOut);
+router.get("/staff/qr", requireRoles("ADMIN"), getStaffPunchQr);
+router.post("/staff/qr/rotate", requireRoles("ADMIN"), rotateStaffPunchQr);
+router.post("/staff/qr-punch", requireRoles("ADMIN", "TEACHER", "EMPLOYEE"), qrPunch);
 router.get("/staff", requireRoles("ADMIN"), listStaffAttendance);
 router.post("/staff/correct", requireRoles("ADMIN"), correctStaffAttendance);
 export default router;

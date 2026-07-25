@@ -14,5 +14,7 @@ export const config = {
     refreshCookieMaxAge: Number(process.env.REFRESH_COOKIE_MAX_AGE ?? 7 * 24 * 60 * 60 * 1000),
     isProduction: process.env.NODE_ENV === "production",
     refreshCookieName: "refreshToken",
+    // Deep link the staff punch QR poster encodes; the token is appended as a query param
+    staffPunchQrLinkBase: process.env.STAFF_PUNCH_QR_LINK_BASE ?? "mobileteacher://qr-punch",
 };
 //# sourceMappingURL=config.js.map

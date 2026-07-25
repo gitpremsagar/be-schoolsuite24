@@ -18,4 +18,7 @@ export const config = {
   ),
   isProduction: process.env.NODE_ENV === "production",
   refreshCookieName: "refreshToken",
+  // Deep link the staff punch QR poster encodes; the token is appended as a query param
+  staffPunchQrLinkBase:
+    process.env.STAFF_PUNCH_QR_LINK_BASE ?? "mobileteacher://qr-punch",
 } as const;

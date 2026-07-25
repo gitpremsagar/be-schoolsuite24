@@ -13,9 +13,12 @@ import {
   getMyStaffMonthlyAttendance,
   getMyStudentAttendance,
   getStaffMonthlyAttendance,
+  getStaffPunchQr,
   listStaffAttendance,
   punchIn,
   punchOut,
+  qrPunch,
+  rotateStaffPunchQr,
   upsertStaffDayAttendance,
   upsertStaffMonthlyAttendance,
   upsertStudentAttendance,
@@ -82,6 +85,13 @@ router.post(
   "/staff/punch-out",
   requireRoles("ADMIN", "TEACHER", "EMPLOYEE"),
   punchOut,
+);
+router.get("/staff/qr", requireRoles("ADMIN"), getStaffPunchQr);
+router.post("/staff/qr/rotate", requireRoles("ADMIN"), rotateStaffPunchQr);
+router.post(
+  "/staff/qr-punch",
+  requireRoles("ADMIN", "TEACHER", "EMPLOYEE"),
+  qrPunch,
 );
 router.get("/staff", requireRoles("ADMIN"), listStaffAttendance);
 router.post("/staff/correct", requireRoles("ADMIN"), correctStaffAttendance);

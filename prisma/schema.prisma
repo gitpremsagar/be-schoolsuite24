@@ -26,6 +26,12 @@ enum StaffType {
   EMPLOYEE
 }
 
+enum PunchMethod {
+  MANUAL
+  QR
+  ADMIN
+}
+
 enum SubscriptionStatus {
   TRIAL
   ACTIVE
@@ -120,6 +126,7 @@ model School {
   enrollments        Enrollment[]
   studentAttendances StudentAttendance[]
   staffAttendances   StaffAttendance[]
+  staffPunchQr       StaffPunchQr?
   subscription       SchoolSubscription?
   payments           Payment[]
   gradeFees          GradeFee[]
@@ -432,6 +439,8 @@ model StaffAttendance {
   status         AttendanceStatus?
   punchInAt      DateTime?
   punchOutAt     DateTime?
+  punchInMethod  PunchMethod?
+  punchOutMethod PunchMethod?
   markedById     String?           @db.ObjectId
   notes          String?
 
@@ -444,6 +453,19 @@ model StaffAttendance {
 
   @@unique([staffProfileId, date])
   @@index([schoolId, date])
+}
+
+/// Secret encoded in the printable QR poster staff scan to punch in/out.
+model StaffPunchQr {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId  String   @unique @db.ObjectId
+  secret    String   @unique
+  rotatedAt DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model GradeFee {
