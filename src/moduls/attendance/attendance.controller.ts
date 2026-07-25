@@ -473,6 +473,12 @@ async function applyPunchOut(staff: StaffProfile, method: PunchMethod) {
 
 export async function punchIn(req: Request, res: Response) {
   try {
+    const auth = getAuthUser(req);
+    if (auth.role === "TEACHER") {
+      throw badRequest(
+        "Teachers must punch in by scanning the school QR code",
+      );
+    }
     const schoolId = requireSchoolId(req);
     const staff = await requireOwnStaffProfile(req);
     const record = await createPunchIn(staff, schoolId, "MANUAL");
