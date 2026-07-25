@@ -54,6 +54,11 @@ enum FeeStatus {
   WAIVED
 }
 
+enum EventFeeScope {
+  SCHOOL
+  CLASSES
+}
+
 model User {
   id       String   @id @default(auto()) @map("_id") @db.ObjectId
   email    String   @unique
@@ -76,6 +81,10 @@ model User {
   paymentsRecorded         Payment[]            @relation("PaymentRecordedBy")
   feePaymentsCreated       StudentFeePayment[]  @relation("FeePaymentCreatedBy")
   feePaymentsUpdated       StudentFeePayment[]  @relation("FeePaymentUpdatedBy")
+  eventFeesCreated         EventFee[]           @relation("EventFeeCreatedBy")
+  eventFeesUpdated         EventFee[]           @relation("EventFeeUpdatedBy")
+  eventFeePaymentsCreated  EventFeePayment[]    @relation("EventFeePaymentCreatedBy")
+  eventFeePaymentsUpdated  EventFeePayment[]    @relation("EventFeePaymentUpdatedBy")
   holidaysCreated          SchoolHoliday[]      @relation("HolidayCreatedBy")
 
   createdAt DateTime @default(now())
@@ -115,6 +124,8 @@ model School {
   payments           Payment[]
   gradeFees          GradeFee[]
   studentFeePayments StudentFeePayment[]
+  eventFees          EventFee[]
+  eventFeePayments   EventFeePayment[]
   holidays           SchoolHoliday[]
 
   createdAt DateTime @default(now())
@@ -242,6 +253,7 @@ model AcademicYear {
   studentAttendances StudentAttendance[]
   gradeFees          GradeFee[]
   studentFeePayments StudentFeePayment[]
+  eventFees          EventFee[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -263,10 +275,12 @@ model Class {
   school       School              @relation(fields: [schoolId], references: [id])
   academicYear AcademicYear        @relation(fields: [academicYearId], references: [id])
   classTeacher User?               @relation("ClassHomeroomTeacher", fields: [classTeacherId], references: [id])
-  teachers     ClassTeacher[]
-  enrollments  Enrollment[]
-  attendances  StudentAttendance[]
-  feePayments  StudentFeePayment[]
+  teachers         ClassTeacher[]
+  enrollments      Enrollment[]
+  attendances      StudentAttendance[]
+  feePayments      StudentFeePayment[]
+  eventFeeClasses  EventFeeClass[]
+  eventFeePayments EventFeePayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -296,11 +310,12 @@ model StudentProfile {
   leavingDate         DateTime?
   isCurrentlyStudying Boolean  @default(true)
 
-  user        User                @relation(fields: [userId], references: [id])
-  school      School              @relation(fields: [schoolId], references: [id])
-  enrollments Enrollment[]
-  attendances StudentAttendance[]
-  feePayments StudentFeePayment[]
+  user             User                @relation(fields: [userId], references: [id])
+  school           School              @relation(fields: [schoolId], references: [id])
+  enrollments      Enrollment[]
+  attendances      StudentAttendance[]
+  feePayments      StudentFeePayment[]
+  eventFeePayments EventFeePayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -495,4 +510,77 @@ model SchoolHoliday {
   updatedAt DateTime @updatedAt
 
   @@unique([schoolId, date])
+}
+
+model EventFee {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId       String        @db.ObjectId
+  academicYearId String        @db.ObjectId
+  name           String
+  description    String?
+  amount         Float
+  currency       String        @default("INR")
+  scope          EventFeeScope
+  eventDate      DateTime?
+  dueDate        DateTime?
+  isActive       Boolean       @default(true)
+  createdById    String        @db.ObjectId
+  updatedById    String        @db.ObjectId
+
+  school       School           @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear     @relation(fields: [academicYearId], references: [id])
+  createdBy    User             @relation("EventFeeCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User             @relation("EventFeeUpdatedBy", fields: [updatedById], references: [id])
+  classes      EventFeeClass[]
+  payments     EventFeePayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, academicYearId])
+  @@index([academicYearId, isActive])
+}
+
+model EventFeeClass {
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  eventFeeId String @db.ObjectId
+  classId    String @db.ObjectId
+
+  eventFee EventFee @relation(fields: [eventFeeId], references: [id])
+  class    Class    @relation(fields: [classId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventFeeId, classId])
+  @@index([classId])
+}
+
+model EventFeePayment {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId         String    @db.ObjectId
+  eventFeeId       String    @db.ObjectId
+  studentProfileId String    @db.ObjectId
+  classId          String    @db.ObjectId
+  status           FeeStatus
+  amountDue        Float
+  amountPaid       Float     @default(0)
+  paidAt           DateTime?
+  notes            String?
+  createdById      String    @db.ObjectId
+  updatedById      String    @db.ObjectId
+
+  school         School         @relation(fields: [schoolId], references: [id])
+  eventFee       EventFee       @relation(fields: [eventFeeId], references: [id])
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  class          Class          @relation(fields: [classId], references: [id])
+  createdBy      User           @relation("EventFeePaymentCreatedBy", fields: [createdById], references: [id])
+  updatedBy      User           @relation("EventFeePaymentUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventFeeId, studentProfileId])
+  @@index([schoolId, eventFeeId])
+  @@index([studentProfileId])
 }
