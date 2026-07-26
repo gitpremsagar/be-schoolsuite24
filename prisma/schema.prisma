@@ -113,6 +113,8 @@ model School {
   postalCode      String?
   logoUrl         String?
   establishedYear Int?
+  /// When false, Saturday is not a teaching day (Sunday is always a holiday)
+  saturdayIsWorkingDay Boolean @default(true)
 
   ownerId String @db.ObjectId
   owner   User   @relation("SchoolOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -120,6 +122,9 @@ model School {
   users              User[]              @relation("SchoolUsers")
   academicYears      AcademicYear[]
   classes            Class[]
+  subjects           Subject[]
+  classSubjects      ClassSubject[]
+  timetableSlots     ClassTimetableSlot[]
   studentProfiles    StudentProfile[]
   staffProfiles      StaffProfile[]
   classTeachers      ClassTeacher[]
@@ -276,6 +281,10 @@ model Class {
   classLevel     String
   section        String?
   monthlyFee     Float?
+  /// Teaching periods per day (1–12)
+  periodCount    Int     @default(8)
+  /// Recess after these period numbers, e.g. [2, 5]
+  recessAfter    Int[]   @default([])
 
   classTeacherId String? @db.ObjectId
 
@@ -283,6 +292,8 @@ model Class {
   academicYear AcademicYear        @relation(fields: [academicYearId], references: [id])
   classTeacher User?               @relation("ClassHomeroomTeacher", fields: [classTeacherId], references: [id])
   teachers         ClassTeacher[]
+  classSubjects    ClassSubject[]
+  timetableSlots   ClassTimetableSlot[]
   enrollments      Enrollment[]
   attendances      StudentAttendance[]
   feePayments      StudentFeePayment[]
@@ -294,6 +305,66 @@ model Class {
 
   @@unique([schoolId, academicYearId, classLevel, section])
   @@index([classTeacherId])
+}
+
+model Subject {
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId String @db.ObjectId
+  name     String
+
+  school         School               @relation(fields: [schoolId], references: [id])
+  classes        ClassSubject[]
+  timetableSlots ClassTimetableSlot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+}
+
+model ClassTimetableSlot {
+  id          String @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId    String @db.ObjectId
+  classId     String @db.ObjectId
+  /// 1=Mon ... 6=Sat (ISO weekday; Sunday is never used)
+  dayOfWeek   Int
+  /// 1..periodCount
+  periodIndex Int
+  subjectId   String @db.ObjectId
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classId, dayOfWeek, periodIndex])
+  @@index([schoolId])
+  @@index([classId])
+  @@index([subjectId])
+}
+
+model ClassSubject {
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId       String  @db.ObjectId
+  classId        String  @db.ObjectId
+  subjectId      String  @db.ObjectId
+  staffProfileId String? @db.ObjectId
+
+  school       School        @relation(fields: [schoolId], references: [id])
+  class        Class         @relation(fields: [classId], references: [id])
+  subject      Subject       @relation(fields: [subjectId], references: [id])
+  staffProfile StaffProfile? @relation(fields: [staffProfileId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classId, subjectId])
+  @@index([subjectId])
+  @@index([schoolId])
+  @@index([staffProfileId])
 }
 
 model StudentProfile {
@@ -353,6 +424,7 @@ model StaffProfile {
   user             User              @relation(fields: [userId], references: [id])
   school           School            @relation(fields: [schoolId], references: [id])
   classAssignments ClassTeacher[]
+  classSubjects    ClassSubject[]
   attendances      StaffAttendance[]
 
   createdAt DateTime @default(now())

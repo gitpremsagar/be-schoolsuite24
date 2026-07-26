@@ -88,6 +88,9 @@ export async function updateMySchool(req, res) {
                     body.establishedYear === null
                     ? { establishedYear: body.establishedYear }
                     : {}),
+                ...(typeof body.saturdayIsWorkingDay === "boolean"
+                    ? { saturdayIsWorkingDay: body.saturdayIsWorkingDay }
+                    : {}),
             },
         });
         res.json({ school });
