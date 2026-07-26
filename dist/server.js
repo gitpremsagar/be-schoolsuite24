@@ -19,7 +19,7 @@ import { AppError } from "./lib/errors.js";
 import { config } from "./lib/config.js";
 const app = express();
 app.use(cors({
-    origin: process.env.FRONTEND_ORIGIN ?? "http://localhost:3000",
+    origin: [process.env.FRONTEND_ORIGIN ?? "http://localhost:3000", "https://www.schoolsuite24.com", "https://schoolsuite24.com"],
     credentials: true,
 }));
 app.use(express.json());
