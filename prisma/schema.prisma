@@ -65,6 +65,11 @@ enum EventFeeScope {
   CLASSES
 }
 
+enum ExamScope {
+  SCHOOL
+  CLASSES
+}
+
 model User {
   id       String   @id @default(auto()) @map("_id") @db.ObjectId
   email    String   @unique
@@ -92,6 +97,10 @@ model User {
   eventFeePaymentsCreated  EventFeePayment[]    @relation("EventFeePaymentCreatedBy")
   eventFeePaymentsUpdated  EventFeePayment[]    @relation("EventFeePaymentUpdatedBy")
   holidaysCreated          SchoolHoliday[]      @relation("HolidayCreatedBy")
+  examinationsCreated      Examination[]        @relation("ExaminationCreatedBy")
+  examinationsUpdated      Examination[]        @relation("ExaminationUpdatedBy")
+  markSheetsMarked         MarkSheet[]          @relation("MarkSheetMarkedBy")
+  markSheetsPublished      MarkSheet[]          @relation("MarkSheetPublishedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -139,6 +148,10 @@ model School {
   eventFees          EventFee[]
   eventFeePayments   EventFeePayment[]
   holidays           SchoolHoliday[]
+  examinations       Examination[]
+  examinationClasses ExaminationClass[]
+  examinationPapers  ExaminationPaper[]
+  markSheets         MarkSheet[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -266,6 +279,7 @@ model AcademicYear {
   gradeFees          GradeFee[]
   studentFeePayments StudentFeePayment[]
   eventFees          EventFee[]
+  examinations       Examination[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -294,11 +308,14 @@ model Class {
   teachers         ClassTeacher[]
   classSubjects    ClassSubject[]
   timetableSlots   ClassTimetableSlot[]
-  enrollments      Enrollment[]
-  attendances      StudentAttendance[]
-  feePayments      StudentFeePayment[]
-  eventFeeClasses  EventFeeClass[]
-  eventFeePayments EventFeePayment[]
+  enrollments         Enrollment[]
+  attendances         StudentAttendance[]
+  feePayments         StudentFeePayment[]
+  eventFeeClasses     EventFeeClass[]
+  eventFeePayments    EventFeePayment[]
+  examinationClasses  ExaminationClass[]
+  examinationPapers   ExaminationPaper[]
+  markSheets          MarkSheet[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -312,9 +329,11 @@ model Subject {
   schoolId String @db.ObjectId
   name     String
 
-  school         School               @relation(fields: [schoolId], references: [id])
-  classes        ClassSubject[]
-  timetableSlots ClassTimetableSlot[]
+  school            School               @relation(fields: [schoolId], references: [id])
+  classes           ClassSubject[]
+  timetableSlots    ClassTimetableSlot[]
+  examinationPapers ExaminationPaper[]
+  markSheets        MarkSheet[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -394,6 +413,7 @@ model StudentProfile {
   attendances      StudentAttendance[]
   feePayments      StudentFeePayment[]
   eventFeePayments EventFeePayment[]
+  markSheets       MarkSheet[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -677,4 +697,105 @@ model EventFeePayment {
   @@unique([eventFeeId, studentProfileId])
   @@index([schoolId, eventFeeId])
   @@index([studentProfileId])
+}
+
+model Examination {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId       String    @db.ObjectId
+  academicYearId String    @db.ObjectId
+  name           String
+  description    String?
+  examDate       DateTime
+  scope          ExamScope
+  createdById    String    @db.ObjectId
+  updatedById    String    @db.ObjectId
+
+  school       School              @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear        @relation(fields: [academicYearId], references: [id])
+  createdBy    User                @relation("ExaminationCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User                @relation("ExaminationUpdatedBy", fields: [updatedById], references: [id])
+  classes      ExaminationClass[]
+  papers       ExaminationPaper[]
+  markSheets   MarkSheet[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, academicYearId])
+  @@index([schoolId, examDate])
+}
+
+model ExaminationClass {
+  id            String @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId      String @db.ObjectId
+  examinationId String @db.ObjectId
+  classId       String @db.ObjectId
+
+  school      School      @relation(fields: [schoolId], references: [id])
+  examination Examination @relation(fields: [examinationId], references: [id])
+  class       Class       @relation(fields: [classId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([examinationId, classId])
+  @@index([classId])
+  @@index([schoolId])
+}
+
+model ExaminationPaper {
+  id            String @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId      String @db.ObjectId
+  examinationId String @db.ObjectId
+  classId       String @db.ObjectId
+  subjectId     String @db.ObjectId
+  maxMarks      Float  @default(100)
+
+  school      School      @relation(fields: [schoolId], references: [id])
+  examination Examination @relation(fields: [examinationId], references: [id])
+  class       Class       @relation(fields: [classId], references: [id])
+  subject     Subject     @relation(fields: [subjectId], references: [id])
+  markSheets  MarkSheet[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([examinationId, classId, subjectId])
+  @@index([classId])
+  @@index([subjectId])
+  @@index([schoolId])
+}
+
+model MarkSheet {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId         String    @db.ObjectId
+  examinationId    String    @db.ObjectId
+  paperId          String    @db.ObjectId
+  classId          String    @db.ObjectId
+  subjectId        String    @db.ObjectId
+  studentProfileId String    @db.ObjectId
+  marksObtained    Float?
+  isPublished      Boolean   @default(false)
+  markedById       String?   @db.ObjectId
+  publishedAt      DateTime?
+  publishedById    String?   @db.ObjectId
+
+  school         School         @relation(fields: [schoolId], references: [id])
+  examination    Examination    @relation(fields: [examinationId], references: [id])
+  paper          ExaminationPaper @relation(fields: [paperId], references: [id])
+  class          Class          @relation(fields: [classId], references: [id])
+  subject        Subject        @relation(fields: [subjectId], references: [id])
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id])
+  markedBy       User?          @relation("MarkSheetMarkedBy", fields: [markedById], references: [id])
+  publishedBy    User?          @relation("MarkSheetPublishedBy", fields: [publishedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([examinationId, studentProfileId, subjectId])
+  @@index([schoolId, examinationId])
+  @@index([paperId])
+  @@index([studentProfileId])
+  @@index([classId, subjectId])
+  @@index([isPublished])
 }

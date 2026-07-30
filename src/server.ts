@@ -16,6 +16,7 @@ import billingRoutes from "./moduls/billing/billing.route.js";
 import feeRoutes from "./moduls/fees/fee.route.js";
 import eventFeeRoutes from "./moduls/event-fees/event-fee.route.js";
 import holidayRoutes from "./moduls/holidays/holiday.route.js";
+import examRoutes from "./moduls/exams/exam.route.js";
 import { AppError } from "./lib/errors.js";
 import { config } from "./lib/config.js";
 
@@ -51,6 +52,7 @@ app.use("/billing", billingRoutes);
 app.use("/fees", feeRoutes);
 app.use("/event-fees", eventFeeRoutes);
 app.use("/holidays", holidayRoutes);
+app.use("/exams", examRoutes);
 app.use("/users", userRoutes);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
