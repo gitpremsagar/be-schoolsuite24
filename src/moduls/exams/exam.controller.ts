@@ -274,6 +274,58 @@ async function getTeacherAssignments(schoolId: string, userId: string) {
   };
 }
 
+/**
+ * Verify each paper's classId+subjectId exists on ClassSubject.
+ * Uses `in` filters + in-memory pair matching instead of compound OR —
+ * Prisma MongoDB has historically mishandled multi-field OR branches, which
+ * made "add another subject" on edit fail even when ClassSubject rows exist.
+ */
+async function assertPapersAssignedToClasses(
+  schoolId: string,
+  papers: PaperInput[],
+) {
+  if (papers.length === 0) return;
+
+  const classIds = [...new Set(papers.map((p) => p.classId))];
+  const subjectIds = [...new Set(papers.map((p) => p.subjectId))];
+
+  const classSubjects = await prisma.classSubject.findMany({
+    where: {
+      schoolId,
+      classId: { in: classIds },
+      subjectId: { in: subjectIds },
+    },
+    select: {
+      classId: true,
+      subjectId: true,
+    },
+  });
+
+  const validPairs = new Set(
+    classSubjects.map((cs) => `${cs.classId}:${cs.subjectId}`),
+  );
+
+  for (const p of papers) {
+    if (validPairs.has(`${p.classId}:${p.subjectId}`)) continue;
+
+    const subject = await prisma.subject.findFirst({
+      where: { id: p.subjectId, schoolId },
+      select: { name: true },
+    });
+    const klass = await prisma.class.findFirst({
+      where: { id: p.classId, schoolId },
+      select: { classLevel: true, section: true },
+    });
+    const subjectLabel = subject?.name ?? p.subjectId;
+    const classLabel = klass
+      ? formatClassLabel(klass.classLevel, klass.section)
+      : p.classId;
+    throw badRequest(
+      `Subject "${subjectLabel}" is not assigned to class ${classLabel}`,
+    );
+  }
+}
+
 function parsePapers(raw: unknown): PaperInput[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw badRequest("papers are required");
@@ -411,26 +463,7 @@ export async function createExamination(req: Request, res: Response) {
       }
     }
 
-    const classSubjects = await prisma.classSubject.findMany({
-      where: {
-        schoolId,
-        OR: papers.map((p) => ({
-          classId: p.classId,
-          subjectId: p.subjectId,
-        })),
-      },
-      select: { classId: true, subjectId: true },
-    });
-    const validPairs = new Set(
-      classSubjects.map((cs) => `${cs.classId}:${cs.subjectId}`),
-    );
-    for (const p of papers) {
-      if (!validPairs.has(`${p.classId}:${p.subjectId}`)) {
-        throw badRequest(
-          "Subject is not assigned to the selected class",
-        );
-      }
-    }
+    await assertPapersAssignedToClasses(schoolId, papers);
 
     const enrollments = await prisma.enrollment.findMany({
       where: {
@@ -698,8 +731,14 @@ export async function updateExamination(req: Request, res: Response) {
       if (auth.role === "TEACHER") {
         const teacher = await getTeacherAssignments(schoolId, auth.userId);
         teacherKeys = teacher.keys;
+        const existingKeys = new Set(
+          exam.papers.map((p) => `${p.classId}:${p.subjectId}`),
+        );
         for (const p of nextPapers) {
-          if (!teacherKeys.has(`${p.classId}:${p.subjectId}`)) {
+          const key = `${p.classId}:${p.subjectId}`;
+          // Allow keeping papers already on the exam; only new ones must be assigned.
+          if (existingKeys.has(key)) continue;
+          if (!teacherKeys.has(key)) {
             throw forbidden(
               "You can only assign your assigned class subjects",
             );
@@ -763,24 +802,15 @@ export async function updateExamination(req: Request, res: Response) {
         }
       }
 
-      const classSubjects = await prisma.classSubject.findMany({
-        where: {
-          schoolId,
-          OR: nextPapers.map((p) => ({
-            classId: p.classId,
-            subjectId: p.subjectId,
-          })),
-        },
-        select: { classId: true, subjectId: true },
-      });
-      const validPairs = new Set(
-        classSubjects.map((cs) => `${cs.classId}:${cs.subjectId}`),
+      // Only newly added papers must exist on ClassSubject. Existing exam
+      // papers are kept even if a class-subject link was later removed.
+      const existingKeys = new Set(
+        exam.papers.map((p) => `${p.classId}:${p.subjectId}`),
       );
-      for (const p of nextPapers) {
-        if (!validPairs.has(`${p.classId}:${p.subjectId}`)) {
-          throw badRequest("Subject is not assigned to the selected class");
-        }
-      }
+      const papersToValidate = nextPapers.filter(
+        (p) => !existingKeys.has(`${p.classId}:${p.subjectId}`),
+      );
+      await assertPapersAssignedToClasses(schoolId, papersToValidate);
     }
 
     await prisma.$transaction(async (tx) => {
