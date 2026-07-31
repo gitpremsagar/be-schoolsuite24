@@ -469,7 +469,8 @@ export async function upsertStudentFeePayment(req, res) {
         if (!targetInRange) {
             throw badRequest("Month is outside the academic year");
         }
-        // PAID: also mark all earlier months in the year as paid.
+        // PAID: also mark earlier unpaid/missing/partial months in the year as paid.
+        // Already-PAID and WAIVED prior months are left unchanged (preserve paidAt).
         // UNPAID: also mark all later months in the year as unpaid.
         // Never cascade into months before the student's admission date.
         const monthsToUpsert = (resolved.status === "PAID"
@@ -490,7 +491,19 @@ export async function upsertStudentFeePayment(req, res) {
             },
         });
         const existingByKey = new Map(existingPayments.map((p) => [`${p.year}-${p.month}`, p]));
-        const payments = await prisma.$transaction(monthsToUpsert.map((m) => {
+        // PAID cascade: skip prior months that are already fully settled.
+        const monthsToWrite = resolved.status === "PAID"
+            ? monthsToUpsert.filter((m) => {
+                const isTarget = m.year === year && m.month === month;
+                if (isTarget)
+                    return true;
+                const existing = existingByKey.get(`${m.year}-${m.month}`);
+                return (!existing ||
+                    existing.status === "UNPAID" ||
+                    existing.status === "PARTIAL");
+            })
+            : monthsToUpsert;
+        const payments = await prisma.$transaction(monthsToWrite.map((m) => {
             const isTarget = m.year === year && m.month === month;
             const existing = existingByKey.get(`${m.year}-${m.month}`);
             const monthFee = isTarget
