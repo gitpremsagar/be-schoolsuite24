@@ -244,6 +244,8 @@ export async function getFeeRegister(req: Request, res: Response) {
               admissionNumber: true,
               rollNumber: true,
               joiningDate: true,
+              leavingDate: true,
+              isCurrentlyStudying: true,
               user: { select: { id: true, name: true, email: true } },
             },
           },
@@ -371,6 +373,10 @@ export async function getFeeRegister(req: Request, res: Response) {
           admissionNumber: e.studentProfile.admissionNumber,
           rollNumber: e.rollNumber ?? e.studentProfile.rollNumber,
           joiningDate: joiningDate ? joiningDate.toISOString() : null,
+          leavingDate: e.studentProfile.leavingDate
+            ? e.studentProfile.leavingDate.toISOString()
+            : null,
+          isCurrentlyStudying: e.studentProfile.isCurrentlyStudying,
           name: e.studentProfile.user.name,
           email: e.studentProfile.user.email,
           classId: e.classId,
