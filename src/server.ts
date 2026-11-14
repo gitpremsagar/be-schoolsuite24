@@ -8,6 +8,7 @@ import platformRoutes from "./moduls/platform/platform.route.js";
 import schoolRoutes from "./moduls/schools/school.route.js";
 import academicYearRoutes from "./moduls/academic-years/academic-year.route.js";
 import classRoutes from "./moduls/classes/class.route.js";
+import chapterRoutes from "./moduls/chapters/chapter.route.js";
 import subjectRoutes from "./moduls/subjects/subject.route.js";
 import studentRoutes from "./moduls/students/student.route.js";
 import staffRoutes from "./moduls/staff/staff.route.js";
@@ -43,6 +44,10 @@ app.use("/auth", authRoutes);
 app.use("/platform", platformRoutes);
 app.use("/schools", schoolRoutes);
 app.use("/academic-years", academicYearRoutes);
+app.use(
+  "/classes/:id/subjects/:subjectId/chapters",
+  chapterRoutes,
+);
 app.use("/classes", classRoutes);
 app.use("/subjects", subjectRoutes);
 app.use("/students", studentRoutes);

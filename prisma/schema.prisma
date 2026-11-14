@@ -133,6 +133,7 @@ model School {
   classes            Class[]
   subjects           Subject[]
   classSubjects      ClassSubject[]
+  chapters           Chapter[]
   timetableSlots     ClassTimetableSlot[]
   studentProfiles    StudentProfile[]
   staffProfiles      StaffProfile[]
@@ -307,6 +308,7 @@ model Class {
   classTeacher User?               @relation("ClassHomeroomTeacher", fields: [classTeacherId], references: [id])
   teachers         ClassTeacher[]
   classSubjects    ClassSubject[]
+  chapters         Chapter[]
   timetableSlots   ClassTimetableSlot[]
   enrollments         Enrollment[]
   attendances         StudentAttendance[]
@@ -331,6 +333,7 @@ model Subject {
 
   school            School               @relation(fields: [schoolId], references: [id])
   classes           ClassSubject[]
+  chapters          Chapter[]
   timetableSlots    ClassTimetableSlot[]
   examinationPapers ExaminationPaper[]
   markSheets        MarkSheet[]
@@ -384,6 +387,28 @@ model ClassSubject {
   @@index([subjectId])
   @@index([schoolId])
   @@index([staffProfileId])
+}
+
+/// A chapter belongs to one subject within one class (class-subject pair).
+model Chapter {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  schoolId  String @db.ObjectId
+  classId   String @db.ObjectId
+  subjectId String @db.ObjectId
+  title     String
+  /// Chapter body stored as plain text
+  content   String @default("")
+  order     Int    @default(0)
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, classId, subjectId])
+  @@index([classId, subjectId, order])
 }
 
 model StudentProfile {
