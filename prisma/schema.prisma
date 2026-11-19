@@ -398,6 +398,13 @@ model Chapter {
   title     String
   /// Chapter body stored as plain text
   content   String @default("")
+  /// End-of-chapter exercise stored as plain text
+  exercise  String @default("")
+  /// Structured answer key: [{ question, answer, explanation, source }]
+  answers   Json?
+  /// True when content/exercise changed after answers were generated
+  answersStale       Boolean   @default(false)
+  answersGeneratedAt DateTime?
   order     Int    @default(0)
 
   school  School  @relation(fields: [schoolId], references: [id])

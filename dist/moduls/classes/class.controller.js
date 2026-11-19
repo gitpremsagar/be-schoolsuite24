@@ -318,6 +318,18 @@ export async function setClassSubjects(req, res) {
         }
         const resolvedSubjects = await resolveClassSubjects(schoolId, subjects ?? []);
         const updated = await prisma.$transaction(async (tx) => {
+            const keptSubjectIds = resolvedSubjects.map((row) => row.subjectId);
+            // Chapters belong to a class-subject pair, so drop chapters for subjects
+            // that are being removed from this class.
+            await tx.chapter.deleteMany({
+                where: {
+                    classId: id,
+                    schoolId,
+                    ...(keptSubjectIds.length > 0
+                        ? { subjectId: { notIn: keptSubjectIds } }
+                        : {}),
+                },
+            });
             await tx.classSubject.deleteMany({ where: { classId: id, schoolId } });
             if (resolvedSubjects.length > 0) {
                 await tx.classSubject.createMany({
