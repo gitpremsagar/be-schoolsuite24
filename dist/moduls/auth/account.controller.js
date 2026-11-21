@@ -4,6 +4,7 @@ import { badRequest, conflict, forbidden, unauthorized } from "../../lib/errors.
 import { getAuthUser } from "../../middleware/auth.js";
 import { handleControllerError } from "./auth.controller.js";
 import { issueTokens } from "./session.js";
+import { validatePassword } from "./password-rules.js";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
  * Change the signed-in user's login email.
@@ -48,6 +49,44 @@ export async function changeEmail(req, res) {
     }
     catch (error) {
         handleControllerError(res, error, "Failed to change email");
+    }
+}
+/**
+ * Change the signed-in user's password after verifying the current one.
+ * Bumps tokenVersion to sign out other devices, then re-issues tokens so this
+ * device stays signed in.
+ */
+export async function changePassword(req, res) {
+    try {
+        const auth = getAuthUser(req);
+        const body = (req.body ?? {});
+        const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
+        const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+        if (!currentPassword) {
+            throw badRequest("Current password is required");
+        }
+        validatePassword(newPassword);
+        const user = await prisma.user.findUnique({ where: { id: auth.userId } });
+        if (!user || !user.isActive) {
+            throw unauthorized("User not found");
+        }
+        const valid = await bcrypt.compare(currentPassword, user.password);
+        if (!valid) {
+            throw forbidden("Current password is incorrect");
+        }
+        if (currentPassword === newPassword ||
+            (await bcrypt.compare(newPassword, user.password))) {
+            throw badRequest("New password must be different from the current password");
+        }
+        const hashed = await bcrypt.hash(newPassword, 12);
+        const updated = await prisma.user.update({
+            where: { id: user.id },
+            data: { password: hashed, tokenVersion: { increment: 1 } },
+        });
+        res.json(issueTokens(res, updated));
+    }
+    catch (error) {
+        handleControllerError(res, error, "Failed to change password");
     }
 }
 //# sourceMappingURL=account.controller.js.map

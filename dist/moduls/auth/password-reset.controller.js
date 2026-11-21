@@ -7,6 +7,7 @@ import { isRateLimited } from "../../lib/rate-limit.js";
 import { sendPasswordChangedEmail, sendPasswordResetEmail, } from "../../lib/mailer.js";
 import { handleControllerError } from "./auth.controller.js";
 import { clearRefreshCookie } from "./session.js";
+import { validatePassword } from "./password-rules.js";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REQUEST_WINDOW_MS = 15 * 60 * 1000;
 const REQUEST_LIMIT_PER_IP = 10;
@@ -15,17 +16,6 @@ const MIN_REQUEST_INTERVAL_MS = 60 * 1000;
 const BCRYPT_ROUNDS = 12;
 function hashToken(token) {
     return createHash("sha256").update(token).digest("hex");
-}
-function validatePassword(password) {
-    if (password.length < 8) {
-        throw badRequest("Password must be at least 8 characters");
-    }
-    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-        throw badRequest("Password must include at least one letter and one number");
-    }
-    if (password.length > 128) {
-        throw badRequest("Password is too long");
-    }
 }
 /**
  * Request a password reset link.
