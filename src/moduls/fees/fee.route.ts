@@ -10,6 +10,7 @@ import {
   listGradeFees,
   upsertGradeFees,
   upsertStudentFeePayment,
+  updateStudentFeeReceipt,
 } from "./fee.controller.js";
 
 const router = Router();
@@ -25,5 +26,6 @@ router.get("/register", getFeeRegister);
 router.get("/grades", listGradeFees);
 router.put("/grades", upsertGradeFees);
 router.put("/payments", upsertStudentFeePayment);
+router.patch("/payments/:paymentId/receipt", updateStudentFeeReceipt);
 
 export default router;

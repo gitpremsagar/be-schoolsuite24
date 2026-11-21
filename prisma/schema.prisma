@@ -101,11 +101,31 @@ model User {
   examinationsUpdated      Examination[]        @relation("ExaminationUpdatedBy")
   markSheetsMarked         MarkSheet[]          @relation("MarkSheetMarkedBy")
   markSheetsPublished      MarkSheet[]          @relation("MarkSheetPublishedBy")
+  passwordResetTokens      PasswordResetToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([schoolId, role])
+}
+
+/// Single-use, short-lived token emailed to a user who forgot their password.
+/// Only a SHA-256 hash of the raw token is stored.
+model PasswordResetToken {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  /// Client IP that requested the reset, for auditing
+  requestedIp String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model School {
@@ -623,6 +643,7 @@ model StudentFeePayment {
   amountPaid       Float     @default(0)
   paidAt           DateTime?
   notes            String?
+  hasPhysicalReceipt Boolean @default(false)
   createdById      String    @db.ObjectId
   updatedById      String    @db.ObjectId
 

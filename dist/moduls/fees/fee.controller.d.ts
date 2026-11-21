@@ -43,4 +43,6 @@ export declare function getFeeRegister(req: Request, res: Response): Promise<voi
 export declare function listGradeFees(req: Request, res: Response): Promise<void>;
 export declare function upsertGradeFees(req: Request, res: Response): Promise<void>;
 export declare function upsertStudentFeePayment(req: Request, res: Response): Promise<void>;
+/** Toggle only the "physical receipt available" flag on one saved payment. */
+export declare function updateStudentFeeReceipt(req: Request, res: Response): Promise<void>;
 //# sourceMappingURL=fee.controller.d.ts.map

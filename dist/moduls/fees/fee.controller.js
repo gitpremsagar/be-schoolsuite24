@@ -241,6 +241,7 @@ export async function getFeeRegister(req, res) {
                             feeAmount: null,
                             paidAt: null,
                             notes: null,
+                            hasPhysicalReceipt: false,
                             paymentId: null,
                             isApplicable: false,
                             createdBy: null,
@@ -263,6 +264,7 @@ export async function getFeeRegister(req, res) {
                             feeAmount: normalized.feeAmount,
                             paidAt: hit.paidAt ? hit.paidAt.toISOString() : null,
                             notes: hit.notes,
+                            hasPhysicalReceipt: hit.hasPhysicalReceipt ?? false,
                             paymentId: hit.id,
                             isApplicable: true,
                             createdBy: hit.createdBy,
@@ -279,6 +281,7 @@ export async function getFeeRegister(req, res) {
                             feeAmount: monthlyFee ?? null,
                             paidAt: null,
                             notes: null,
+                            hasPhysicalReceipt: false,
                             paymentId: null,
                             isApplicable: true,
                             createdBy: null,
@@ -399,7 +402,7 @@ export async function upsertStudentFeePayment(req, res) {
     try {
         const auth = getAuthUser(req);
         const schoolId = requireSchoolId(req);
-        const { studentProfileId, academicYearId, year, month, status, amountDue: amountDueRaw, amountPaid, feeAmount: feeAmountRaw, paidAt, notes, } = req.body;
+        const { studentProfileId, academicYearId, year, month, status, amountDue: amountDueRaw, amountPaid, feeAmount: feeAmountRaw, paidAt, notes, hasPhysicalReceipt: hasPhysicalReceiptRaw, } = req.body;
         if (!studentProfileId || !academicYearId) {
             throw badRequest("studentProfileId and academicYearId are required");
         }
@@ -468,6 +471,9 @@ export async function upsertStudentFeePayment(req, res) {
         if (resolved.status === "UNPAID") {
             paidAtDate = null;
         }
+        // Physical receipt only applies to months where money was actually collected.
+        const hasPhysicalReceipt = hasPhysicalReceiptRaw === true &&
+            (resolved.status === "PAID" || resolved.status === "PARTIAL");
         // WAIVED: keep paidAt if provided as waiver date, else null
         const yearMonths = monthsInRange(academicYear.startDate, academicYear.endDate);
         const targetOrdinal = year * 12 + month;
@@ -539,6 +545,7 @@ export async function upsertStudentFeePayment(req, res) {
             }
             const monthPaidAt = monthResolved.status === "UNPAID" ? null : paidAtDate;
             const monthNotes = isTarget ? (notes ?? null) : null;
+            const monthHasPhysicalReceipt = isTarget ? hasPhysicalReceipt : false;
             return prisma.studentFeePayment.upsert({
                 where: {
                     studentProfileId_academicYearId_year_month: {
@@ -560,6 +567,7 @@ export async function upsertStudentFeePayment(req, res) {
                     amountPaid: monthResolved.amountPaid,
                     paidAt: monthPaidAt,
                     notes: monthNotes,
+                    hasPhysicalReceipt: monthHasPhysicalReceipt,
                     createdById: auth.userId,
                     updatedById: auth.userId,
                 },
@@ -569,6 +577,7 @@ export async function upsertStudentFeePayment(req, res) {
                     amountDue: monthResolved.amountDue,
                     amountPaid: monthResolved.amountPaid,
                     paidAt: monthPaidAt,
+                    hasPhysicalReceipt: monthHasPhysicalReceipt,
                     ...(isTarget ? { notes: monthNotes } : {}),
                     updatedById: auth.userId,
                 },
@@ -586,6 +595,46 @@ export async function upsertStudentFeePayment(req, res) {
     }
     catch (error) {
         handleControllerError(res, error, "Failed to save fee payment");
+    }
+}
+/** Toggle only the "physical receipt available" flag on one saved payment. */
+export async function updateStudentFeeReceipt(req, res) {
+    try {
+        const auth = getAuthUser(req);
+        const schoolId = requireSchoolId(req);
+        const paymentIdParam = req.params.paymentId;
+        const paymentId = Array.isArray(paymentIdParam)
+            ? paymentIdParam[0]
+            : paymentIdParam;
+        const { hasPhysicalReceipt } = req.body;
+        if (typeof hasPhysicalReceipt !== "boolean") {
+            throw badRequest("hasPhysicalReceipt must be a boolean");
+        }
+        if (!paymentId || !/^[a-fA-F0-9]{24}$/.test(paymentId)) {
+            throw notFound("Fee payment not found");
+        }
+        const existing = await prisma.studentFeePayment.findFirst({
+            where: { id: paymentId, schoolId },
+            select: { id: true, status: true },
+        });
+        if (!existing) {
+            throw notFound("Fee payment not found");
+        }
+        if (existing.status !== "PAID" && existing.status !== "PARTIAL") {
+            throw badRequest("Physical receipt can only be recorded for paid or partially paid months");
+        }
+        const payment = await prisma.studentFeePayment.update({
+            where: { id: existing.id },
+            data: { hasPhysicalReceipt, updatedById: auth.userId },
+            include: {
+                createdBy: { select: { id: true, name: true, email: true } },
+                updatedBy: { select: { id: true, name: true, email: true } },
+            },
+        });
+        res.json({ payment });
+    }
+    catch (error) {
+        handleControllerError(res, error, "Failed to update physical receipt");
     }
 }
 //# sourceMappingURL=fee.controller.js.map
