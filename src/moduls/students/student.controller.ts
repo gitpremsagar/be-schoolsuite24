@@ -569,7 +569,9 @@ export async function updateStudent(req: Request, res: Response) {
           ...(typeof email === "string" ? { email } : {}),
           ...(phone !== undefined ? { phone: phone || null } : {}),
           ...(typeof isActive === "boolean" ? { isActive } : {}),
-          ...(hashedPassword ? { password: hashedPassword } : {}),
+          ...(hashedPassword
+            ? { password: hashedPassword, tokenVersion: { increment: 1 } }
+            : {}),
         },
       });
 

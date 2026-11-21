@@ -373,7 +373,9 @@ export async function updateStaff(req: Request, res: Response) {
           ...(phone !== undefined ? { phone: phone || null } : {}),
           ...(role ? { role } : {}),
           ...(typeof isActive === "boolean" ? { isActive } : {}),
-          ...(hashedPassword ? { password: hashedPassword } : {}),
+          ...(hashedPassword
+            ? { password: hashedPassword, tokenVersion: { increment: 1 } }
+            : {}),
         },
       });
 
