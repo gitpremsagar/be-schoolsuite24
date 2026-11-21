@@ -3,52 +3,9 @@ import { prisma } from "../../lib/prisma.js";
 import { config } from "../../lib/config.js";
 import { addDays } from "../../lib/dates.js";
 import { AppError, badRequest, conflict } from "../../lib/errors.js";
-import { signAccessToken, signRefreshToken, verifyRefreshToken, } from "./token.js";
-function refreshCookieOptions() {
-    return {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: config.isProduction,
-        path: "/",
-        maxAge: config.refreshCookieMaxAge,
-    };
-}
-function setRefreshCookie(res, refreshToken) {
-    res.cookie(config.refreshCookieName, refreshToken, refreshCookieOptions());
-}
-function clearRefreshCookie(res) {
-    res.clearCookie(config.refreshCookieName, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: config.isProduction,
-        path: "/",
-    });
-}
-function publicUser(user) {
-    return {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-        role: user.role,
-        schoolId: user.schoolId,
-        isActive: user.isActive,
-    };
-}
-function issueTokens(res, user) {
-    const payload = {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        schoolId: user.schoolId,
-    };
-    const accessToken = signAccessToken(payload);
-    const refreshToken = signRefreshToken(payload);
-    setRefreshCookie(res, refreshToken);
-    // refreshToken is also returned in the body for mobile clients (SecureStore).
-    // Web continues to use the httpOnly cookie.
-    return { accessToken, refreshToken, user: publicUser(user) };
-}
+import { verifyRefreshToken } from "./token.js";
+import { issueTokens, clearRefreshCookie } from "./session.js";
+/** School owner registration: creates ADMIN + School + trial subscription. */
 async function getOrCreateDefaultPlan() {
     const existing = await prisma.subscriptionPlan.findFirst({
         where: { isActive: true },

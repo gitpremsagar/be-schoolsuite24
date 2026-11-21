@@ -17,6 +17,15 @@ export function setRefreshCookie(res: Response, refreshToken: string) {
   res.cookie(config.refreshCookieName, refreshToken, refreshCookieOptions());
 }
 
+export function clearRefreshCookie(res: Response) {
+  res.clearCookie(config.refreshCookieName, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: config.isProduction,
+    path: "/",
+  });
+}
+
 type PublicUser = {
   id: string;
   email: string;

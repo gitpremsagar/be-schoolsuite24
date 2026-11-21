@@ -5,18 +5,9 @@ import { config } from "../../lib/config.js";
 import { addDays } from "../../lib/dates.js";
 import { AppError, badRequest, conflict } from "../../lib/errors.js";
 import { verifyRefreshToken } from "./token.js";
-import { issueTokens } from "./session.js";
+import { issueTokens, clearRefreshCookie } from "./session.js";
 
-function clearRefreshCookie(res: Response) {
-  res.clearCookie(config.refreshCookieName, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: config.isProduction,
-    path: "/",
-  });
-}
-
-/** Returns the default subscription plan, creating it once if none exists. */
+/** School owner registration: creates ADMIN + School + trial subscription. */
 async function getOrCreateDefaultPlan() {
   const existing = await prisma.subscriptionPlan.findFirst({
     where: { isActive: true },
