@@ -8,6 +8,8 @@ export type TokenPayload = {
   email: string;
   role: UserRole;
   schoolId: string | null;
+  /** Missing on tokens issued before versioning existed; treated as 0. */
+  tokenVersion: number;
 };
 
 export function signAccessToken(payload: TokenPayload): string {
@@ -46,6 +48,8 @@ function parsePayload(decoded: string | jwt.JwtPayload): TokenPayload {
     role: decoded.role as UserRole,
     schoolId:
       typeof decoded.schoolId === "string" ? decoded.schoolId : null,
+    tokenVersion:
+      typeof decoded.tokenVersion === "number" ? decoded.tokenVersion : 0,
   };
 }
 

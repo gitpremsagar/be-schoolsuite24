@@ -27,6 +27,7 @@ function parsePayload(decoded) {
         email: decoded.email,
         role: decoded.role,
         schoolId: typeof decoded.schoolId === "string" ? decoded.schoolId : null,
+        tokenVersion: typeof decoded.tokenVersion === "number" ? decoded.tokenVersion : 0,
     };
 }
 export function verifyAccessToken(token) {

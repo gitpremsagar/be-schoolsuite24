@@ -54,6 +54,7 @@ export function issueTokens(res: Response, user: User) {
     email: user.email,
     role: user.role,
     schoolId: user.schoolId,
+    tokenVersion: user.tokenVersion ?? 0,
   };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);

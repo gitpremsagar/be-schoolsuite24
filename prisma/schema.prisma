@@ -81,6 +81,8 @@ model User {
   schoolId String? @db.ObjectId
   school   School? @relation("SchoolUsers", fields: [schoolId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   isActive Boolean @default(true)
+  /// Bumped whenever credentials change; tokens carrying an older version are rejected.
+  tokenVersion Int @default(0)
 
   ownedSchools             School[]             @relation("SchoolOwner")
   studentProfile           StudentProfile?

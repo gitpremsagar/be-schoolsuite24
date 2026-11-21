@@ -4,6 +4,8 @@ export type TokenPayload = {
     email: string;
     role: UserRole;
     schoolId: string | null;
+    /** Missing on tokens issued before versioning existed; treated as 0. */
+    tokenVersion: number;
 };
 export declare function signAccessToken(payload: TokenPayload): string;
 export declare function signRefreshToken(payload: TokenPayload): string;

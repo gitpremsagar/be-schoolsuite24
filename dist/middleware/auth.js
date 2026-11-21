@@ -1,7 +1,7 @@
 import { verifyAccessToken } from "../moduls/auth/token.js";
 import { prisma } from "../lib/prisma.js";
 import { AppError, forbidden, unauthorized } from "../lib/errors.js";
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) {
         res.status(401).json({ error: "Access token required" });
@@ -14,6 +14,22 @@ export function requireAuth(req, res, next) {
     }
     try {
         const payload = verifyAccessToken(token);
+        // Reject tokens issued before the credentials last changed, so a password
+        // reset or similar event signs the account out everywhere immediately.
+        const user = await prisma.user.findUnique({
+            where: { id: payload.userId },
+            select: { tokenVersion: true, isActive: true },
+        });
+        if (!user || !user.isActive) {
+            res.status(401).json({ error: "Invalid or expired access token" });
+            return;
+        }
+        if ((user.tokenVersion ?? 0) !== payload.tokenVersion) {
+            res.status(401).json({
+                error: "Your session has expired. Please sign in again.",
+            });
+            return;
+        }
         req.user = {
             userId: payload.userId,
             email: payload.email,

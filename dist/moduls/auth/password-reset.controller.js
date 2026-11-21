@@ -139,7 +139,7 @@ export async function resetPassword(req, res) {
         }
         await prisma.user.update({
             where: { id: record.userId },
-            data: { password: hashed },
+            data: { password: hashed, tokenVersion: { increment: 1 } },
         });
         // Any other outstanding links for this account stop working.
         await prisma.passwordResetToken

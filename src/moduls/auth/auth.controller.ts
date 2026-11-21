@@ -211,6 +211,13 @@ export async function refresh(req: Request, res: Response) {
       res.status(401).json({ error: "User not found" });
       return;
     }
+    if ((user.tokenVersion ?? 0) !== payload.tokenVersion) {
+      clearRefreshCookie(res);
+      res.status(401).json({
+        error: "Your session has expired. Please sign in again.",
+      });
+      return;
+    }
 
     res.json(issueTokens(res, user));
   } catch (error) {

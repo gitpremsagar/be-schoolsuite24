@@ -13,7 +13,7 @@ declare global {
         }
     }
 }
-export declare function requireAuth(req: Request, res: Response, next: NextFunction): void;
+export declare function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void>;
 export declare function requireRoles(...roles: UserRole[]): (req: Request, res: Response, next: NextFunction) => void;
 /** Ensure school users operate only within their school. Super admin bypasses. */
 export declare function requireSchoolAccess(req: Request, res: Response, next: NextFunction): void;
