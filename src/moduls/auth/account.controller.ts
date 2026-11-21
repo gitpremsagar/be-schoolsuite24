@@ -6,6 +6,7 @@ import { getAuthUser } from "../../middleware/auth.js";
 import { handleControllerError } from "./auth.controller.js";
 import { issueTokens } from "./session.js";
 import { validatePassword } from "./password-rules.js";
+import { bumpTokenVersion } from "./token-version.js";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -107,9 +108,15 @@ export async function changePassword(req: Request, res: Response) {
     }
 
     const hashed = await bcrypt.hash(newPassword, 12);
-    const updated = await prisma.user.update({
+    await prisma.user.update({
       where: { id: user.id },
-      data: { password: hashed, tokenVersion: { increment: 1 } },
+      data: { password: hashed },
+    });
+    await bumpTokenVersion(user.id);
+
+    // Re-read so the new tokens carry the bumped version.
+    const updated = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
     });
 
     res.json(issueTokens(res, updated));

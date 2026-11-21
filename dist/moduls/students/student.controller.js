@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError, badRequest, conflict, forbidden, notFound } from "../../lib/errors.js";
 import { getAuthUser, requireSchoolId } from "../../middleware/auth.js";
 import { handleControllerError } from "../auth/auth.controller.js";
+import { bumpTokenVersion } from "../auth/token-version.js";
 import { param } from "../../lib/params.js";
 import { normalizeClassLevel } from "../../lib/class-levels.js";
 function parseStudyingFlag(value) {
@@ -404,9 +405,7 @@ export async function updateStudent(req, res) {
                     ...(typeof email === "string" ? { email } : {}),
                     ...(phone !== undefined ? { phone: phone || null } : {}),
                     ...(typeof isActive === "boolean" ? { isActive } : {}),
-                    ...(hashedPassword
-                        ? { password: hashedPassword, tokenVersion: { increment: 1 } }
-                        : {}),
+                    ...(hashedPassword ? { password: hashedPassword } : {}),
                 },
             });
             const profile = await tx.studentProfile.update({
@@ -511,6 +510,9 @@ export async function updateStudent(req, res) {
             });
             return { profile, enrollment, enrollments };
         });
+        if (hashedPassword) {
+            await bumpTokenVersion(existing.userId);
+        }
         res.json({
             student: {
                 ...result.profile,

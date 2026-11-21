@@ -8,6 +8,7 @@ import { sendPasswordChangedEmail, sendPasswordResetEmail, } from "../../lib/mai
 import { handleControllerError } from "./auth.controller.js";
 import { clearRefreshCookie } from "./session.js";
 import { validatePassword } from "./password-rules.js";
+import { bumpTokenVersion } from "./token-version.js";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REQUEST_WINDOW_MS = 15 * 60 * 1000;
 const REQUEST_LIMIT_PER_IP = 10;
@@ -129,8 +130,9 @@ export async function resetPassword(req, res) {
         }
         await prisma.user.update({
             where: { id: record.userId },
-            data: { password: hashed, tokenVersion: { increment: 1 } },
+            data: { password: hashed },
         });
+        await bumpTokenVersion(record.userId);
         // Any other outstanding links for this account stop working.
         await prisma.passwordResetToken
             .deleteMany({ where: { userId: record.userId, id: { not: record.id } } })

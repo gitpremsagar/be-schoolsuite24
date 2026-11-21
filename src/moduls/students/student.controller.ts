@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError, badRequest, conflict, forbidden, notFound } from "../../lib/errors.js";
 import { getAuthUser, requireSchoolId } from "../../middleware/auth.js";
 import { handleControllerError } from "../auth/auth.controller.js";
+import { bumpTokenVersion } from "../auth/token-version.js";
 import { param } from "../../lib/params.js";
 import { normalizeClassLevel } from "../../lib/class-levels.js";
 
@@ -569,9 +570,7 @@ export async function updateStudent(req: Request, res: Response) {
           ...(typeof email === "string" ? { email } : {}),
           ...(phone !== undefined ? { phone: phone || null } : {}),
           ...(typeof isActive === "boolean" ? { isActive } : {}),
-          ...(hashedPassword
-            ? { password: hashedPassword, tokenVersion: { increment: 1 } }
-            : {}),
+          ...(hashedPassword ? { password: hashedPassword } : {}),
         },
       });
 
@@ -680,6 +679,10 @@ export async function updateStudent(req: Request, res: Response) {
 
       return { profile, enrollment, enrollments };
     });
+
+    if (hashedPassword) {
+      await bumpTokenVersion(existing.userId);
+    }
 
     res.json({
       student: {

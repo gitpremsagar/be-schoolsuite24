@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { badRequest, conflict, forbidden, notFound } from "../../lib/errors.js";
 import { getAuthUser, requireSchoolId } from "../../middleware/auth.js";
 import { handleControllerError } from "../auth/auth.controller.js";
+import { bumpTokenVersion } from "../auth/token-version.js";
 import { param } from "../../lib/params.js";
 
 const TIME_HH_MM = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -373,9 +374,7 @@ export async function updateStaff(req: Request, res: Response) {
           ...(phone !== undefined ? { phone: phone || null } : {}),
           ...(role ? { role } : {}),
           ...(typeof isActive === "boolean" ? { isActive } : {}),
-          ...(hashedPassword
-            ? { password: hashedPassword, tokenVersion: { increment: 1 } }
-            : {}),
+          ...(hashedPassword ? { password: hashedPassword } : {}),
         },
       });
 
@@ -412,6 +411,10 @@ export async function updateStaff(req: Request, res: Response) {
         include: staffInclude,
       });
     });
+
+    if (hashedPassword) {
+      await bumpTokenVersion(existing.userId);
+    }
 
     res.json({ staff: result });
   } catch (error) {
