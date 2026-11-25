@@ -13,6 +13,7 @@ import {
   getMyStaffMonthlyAttendance,
   getMyStudentAttendance,
   getStaffMonthlyAttendance,
+  getStaffMonthlyDetail,
   getStaffPunchQr,
   listStaffAttendance,
   punchIn,
@@ -60,6 +61,11 @@ router.get(
   "/staff/month",
   requireRoles("ADMIN"),
   getStaffMonthlyAttendance,
+);
+router.get(
+  "/staff/:staffProfileId/month",
+  requireRoles("ADMIN"),
+  getStaffMonthlyDetail,
 );
 router.post(
   "/staff/month",

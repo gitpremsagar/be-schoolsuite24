@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireActiveSubscription, requireRoles, requireSchoolAccess, } from "../../middleware/auth.js";
-import { correctStaffAttendance, getClassAttendance, getClassMonthlyAttendance, getMyStaffAttendanceToday, getMyStaffMonthlyAttendance, getMyStudentAttendance, getStaffMonthlyAttendance, getStaffPunchQr, listStaffAttendance, punchIn, punchOut, qrPunch, rotateStaffPunchQr, upsertStaffDayAttendance, upsertStaffMonthlyAttendance, upsertStudentAttendance, upsertStudentMonthlyAttendance, } from "./attendance.controller.js";
+import { correctStaffAttendance, getClassAttendance, getClassMonthlyAttendance, getMyStaffAttendanceToday, getMyStaffMonthlyAttendance, getMyStudentAttendance, getStaffMonthlyAttendance, getStaffMonthlyDetail, getStaffPunchQr, listStaffAttendance, punchIn, punchOut, qrPunch, rotateStaffPunchQr, upsertStaffDayAttendance, upsertStaffMonthlyAttendance, upsertStudentAttendance, upsertStudentMonthlyAttendance, } from "./attendance.controller.js";
 const router = Router();
 router.use(requireAuth, requireSchoolAccess, requireActiveSubscription);
 router.get("/students/month", requireRoles("ADMIN", "TEACHER"), getClassMonthlyAttendance);
@@ -10,6 +10,7 @@ router.post("/students", requireRoles("ADMIN", "TEACHER"), upsertStudentAttendan
 router.get("/students/me", requireRoles("STUDENT"), getMyStudentAttendance);
 router.get("/staff/me/month", requireRoles("ADMIN", "TEACHER", "EMPLOYEE"), getMyStaffMonthlyAttendance);
 router.get("/staff/month", requireRoles("ADMIN"), getStaffMonthlyAttendance);
+router.get("/staff/:staffProfileId/month", requireRoles("ADMIN"), getStaffMonthlyDetail);
 router.post("/staff/month", requireRoles("ADMIN"), upsertStaffMonthlyAttendance);
 router.post("/staff/day", requireRoles("ADMIN"), upsertStaffDayAttendance);
 router.get("/staff/today", requireRoles("ADMIN", "TEACHER", "EMPLOYEE"), getMyStaffAttendanceToday);

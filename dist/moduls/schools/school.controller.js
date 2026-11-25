@@ -37,6 +37,13 @@ export async function updateMySchool(req, res) {
         const schoolId = requireSchoolId(req);
         const body = req.body;
         const adminPassword = typeof body.adminPassword === "string" ? body.adminPassword : "";
+        const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+        for (const key of ["staffWorkStartTime", "staffWorkEndTime"]) {
+            const value = body[key];
+            if (value != null && (typeof value !== "string" || !TIME_RE.test(value))) {
+                throw badRequest(`${key} must be a time in HH:mm format`);
+            }
+        }
         if (!adminPassword) {
             throw badRequest("Admin password is required to update school settings");
         }
@@ -90,6 +97,14 @@ export async function updateMySchool(req, res) {
                     : {}),
                 ...(typeof body.saturdayIsWorkingDay === "boolean"
                     ? { saturdayIsWorkingDay: body.saturdayIsWorkingDay }
+                    : {}),
+                ...(typeof body.staffWorkStartTime === "string" ||
+                    body.staffWorkStartTime === null
+                    ? { staffWorkStartTime: body.staffWorkStartTime }
+                    : {}),
+                ...(typeof body.staffWorkEndTime === "string" ||
+                    body.staffWorkEndTime === null
+                    ? { staffWorkEndTime: body.staffWorkEndTime }
                     : {}),
             },
         });

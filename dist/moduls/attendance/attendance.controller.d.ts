@@ -22,6 +22,8 @@ export declare function getMyStaffMonthlyAttendance(req: Request, res: Response)
 export declare function listStaffAttendance(req: Request, res: Response): Promise<void>;
 /** Full-month staff attendance register for the school. */
 export declare function getStaffMonthlyAttendance(req: Request, res: Response): Promise<void>;
+/** Full-month attendance detail for one staff member. */
+export declare function getStaffMonthlyDetail(req: Request, res: Response): Promise<void>;
 /** Bulk save staff attendance marks across multiple days. */
 export declare function upsertStaffMonthlyAttendance(req: Request, res: Response): Promise<void>;
 export declare function getMyStudentAttendance(req: Request, res: Response): Promise<void>;

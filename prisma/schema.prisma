@@ -147,6 +147,11 @@ model School {
   /// When false, Saturday is not a teaching day (Sunday is always a holiday)
   saturdayIsWorkingDay Boolean @default(true)
 
+  /// Expected staff work window (HH:mm, school local time).
+  /// Punches after the start are "late" and punches before the end are "early".
+  staffWorkStartTime String?
+  staffWorkEndTime   String?
+
   ownerId String @db.ObjectId
   owner   User   @relation("SchoolOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 

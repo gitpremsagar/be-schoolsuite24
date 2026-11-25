@@ -22,6 +22,10 @@ function parseYearMonth(req: Request): { year: number; month: number } {
   return { year, month };
 }
 
+/** Fallback staff work window when the school has not configured one. */
+const DEFAULT_STAFF_WORK_START = "09:00";
+const DEFAULT_STAFF_WORK_END = "17:00";
+
 export async function getClassAttendance(req: Request, res: Response) {
   try {
     const schoolId = requireSchoolId(req);
@@ -817,6 +821,96 @@ export async function getStaffMonthlyAttendance(req: Request, res: Response) {
     });
   } catch (error) {
     handleControllerError(res, error, "Failed to load staff monthly attendance");
+  }
+}
+
+/** Full-month attendance detail for one staff member. */
+export async function getStaffMonthlyDetail(req: Request, res: Response) {
+  try {
+    const schoolId = requireSchoolId(req);
+    const rawStaffId = req.params.staffProfileId;
+    const staffProfileId = Array.isArray(rawStaffId)
+      ? rawStaffId[0]
+      : rawStaffId;
+    if (!staffProfileId) {
+      throw badRequest("staffProfileId is required");
+    }
+    const { year, month } = parseYearMonth(req);
+
+    const staff = await prisma.staffProfile.findFirst({
+      where: { id: staffProfileId, schoolId },
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
+    if (!staff) {
+      throw notFound("Staff member not found");
+    }
+
+    const { start, end, daysInMonth } = utcMonthRange(year, month);
+    const records = await prisma.staffAttendance.findMany({
+      where: { schoolId, staffProfileId, date: { gte: start, lte: end } },
+      orderBy: { date: "asc" },
+    });
+    const byDay = new Map(records.map((row) => [utcDayKey(row.date), row]));
+    const holidayKeys = await listHolidayKeysForMonth(schoolId, year, month);
+    const holidaySet = new Set(holidayKeys);
+
+    const school = await prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { staffWorkStartTime: true, staffWorkEndTime: true },
+    });
+
+    const staffOptions = await prisma.staffProfile.findMany({
+      where: { schoolId },
+      include: { user: { select: { name: true } } },
+      orderBy: { employeeCode: "asc" },
+    });
+
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(
+      (day) => {
+        const key = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const hit = byDay.get(key);
+        return {
+          date: key,
+          day,
+          weekday: new Date(Date.UTC(year, month - 1, day)).getUTCDay(),
+          isHoliday: holidaySet.has(key),
+          status: hit?.status ?? null,
+          punchInAt: hit?.punchInAt ? hit.punchInAt.toISOString() : null,
+          punchOutAt: hit?.punchOutAt ? hit.punchOutAt.toISOString() : null,
+          punchInMethod: hit?.punchInMethod ?? null,
+          punchOutMethod: hit?.punchOutMethod ?? null,
+          notes: hit?.notes ?? null,
+        };
+      },
+    );
+
+    res.json({
+      year,
+      month,
+      daysInMonth,
+      holidays: holidayKeys,
+      workStartTime: school?.staffWorkStartTime ?? DEFAULT_STAFF_WORK_START,
+      workEndTime: school?.staffWorkEndTime ?? DEFAULT_STAFF_WORK_END,
+      staffOptions: staffOptions.map((option) => ({
+        staffProfileId: option.id,
+        employeeCode: option.employeeCode,
+        name: option.user.name,
+        staffType: option.staffType,
+      })),
+      staff: {
+        staffProfileId: staff.id,
+        employeeCode: staff.employeeCode,
+        staffType: staff.staffType,
+        name: staff.user.name,
+        email: staff.user.email,
+        role: staff.user.role,
+      },
+      days,
+    });
+  } catch (error) {
+    handleControllerError(res, error, "Failed to load staff attendance detail");
   }
 }
 
